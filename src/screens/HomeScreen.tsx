@@ -294,7 +294,7 @@ function makeStyles(c: typeof Colors.dark, isDark: boolean) {
     continueLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
     surahNumBadge: { ...Typography.heading, fontWeight: '700', width: 32, textAlign: 'center' },
     continueArabic: {
-      fontFamily: 'NotoNaskhArabic',
+      fontFamily: 'NotoNaskhArabic_400Regular',
       fontSize: 18,
       textAlign: 'right',
     },

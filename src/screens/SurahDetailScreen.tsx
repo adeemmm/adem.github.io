@@ -435,7 +435,7 @@ const headerStyles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   arabicName: {
-    fontFamily: 'NotoNaskhArabic',
+    fontFamily: 'NotoNaskhArabic_400Regular',
     fontSize: 36,
     color: '#fff',
     textAlign: 'center',
@@ -462,7 +462,7 @@ const headerStyles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
   },
   bismillah: {
-    fontFamily: 'NotoNaskhArabic',
+    fontFamily: 'NotoNaskhArabic_400Regular',
     fontSize: 24,
     color: Colors.goldLight,
     textAlign: 'center',
@@ -495,7 +495,7 @@ const cardStyles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: Spacing.sm },
   actionBtn: { padding: Spacing.xs },
   arabic: {
-    fontFamily: 'NotoNaskhArabic',
+    fontFamily: 'NotoNaskhArabic_400Regular',
     fontSize: 26,
     lineHeight: 48,
     textAlign: 'right',

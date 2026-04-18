@@ -346,7 +346,7 @@ const rowStyles = StyleSheet.create({
   badgeText: { fontSize: 10, fontWeight: '700' },
   ayahCount: { ...Typography.small },
   arabic: {
-    fontFamily: 'NotoNaskhArabic',
+    fontFamily: 'NotoNaskhArabic_400Regular',
     fontSize: 20,
     textAlign: 'right',
     maxWidth: 100,

@@ -200,7 +200,7 @@ function makeStyles(c: typeof Colors.dark, isDark: boolean) {
     surahName: { ...Typography.subheading },
     surahMeta: { ...Typography.caption, marginTop: 2 },
     surahArabic: {
-      fontFamily: 'NotoNaskhArabic',
+      fontFamily: 'NotoNaskhArabic_400Regular',
       fontSize: 18,
       textAlign: 'right',
       writingDirection: 'rtl',

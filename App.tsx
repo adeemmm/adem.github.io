@@ -1,6 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback } from 'react';
 import { View } from 'react-native';
-import { useFonts } from 'expo-font';
+import {
+  useFonts,
+  NotoNaskhArabic_400Regular,
+  NotoNaskhArabic_700Bold,
+} from '@expo-google-fonts/noto-naskh-arabic';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -11,8 +15,8 @@ SplashScreen.preventAutoHideAsync();
 
 export default function App() {
   const [fontsLoaded, fontError] = useFonts({
-    NotoNaskhArabic: require('./assets/fonts/NotoNaskhArabic-Regular.ttf'),
-    'NotoNaskhArabic-Bold': require('./assets/fonts/NotoNaskhArabic-Bold.ttf'),
+    NotoNaskhArabic_400Regular,
+    NotoNaskhArabic_700Bold,
   });
 
   const onLayoutRootView = useCallback(async () => {
