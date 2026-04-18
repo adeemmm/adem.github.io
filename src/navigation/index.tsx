@@ -11,6 +11,8 @@ import SurahDetailScreen from '../screens/SurahDetailScreen';
 import PracticeScreen from '../screens/PracticeScreen';
 import PracticeSessionScreen from '../screens/PracticeSessionScreen';
 import ProgressScreen from '../screens/ProgressScreen';
+import LearnScreen from '../screens/LearnScreen';
+import LessonScreen from '../screens/LessonScreen';
 import { Colors } from '../theme';
 
 export type SurahStackParamList = {
@@ -23,16 +25,23 @@ export type PracticeStackParamList = {
   PracticeSession: { surahNumber: number; surahName: string; englishName: string };
 };
 
+export type LearnStackParamList = {
+  LearnHome: undefined;
+  Lesson: { lessonId: string };
+};
+
 export type RootTabParamList = {
   HomeTab: undefined;
   SurahsTab: undefined;
   PracticeTab: undefined;
+  LearnTab: undefined;
   ProgressTab: undefined;
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
 const SurahStack = createNativeStackNavigator<SurahStackParamList>();
 const PracticeStack = createNativeStackNavigator<PracticeStackParamList>();
+const LearnStack = createNativeStackNavigator<LearnStackParamList>();
 
 const STACK_HEADER_OPTIONS = {
   headerStyle: { backgroundColor: Colors.primary },
@@ -63,6 +72,24 @@ function PracticeNavigator() {
         options={({ route }) => ({ title: route.params.englishName, headerBackTitle: 'Practice' })}
       />
     </PracticeStack.Navigator>
+  );
+}
+
+function LearnNavigator() {
+  return (
+    <LearnStack.Navigator screenOptions={STACK_HEADER_OPTIONS}>
+      <LearnStack.Screen name="LearnHome" component={LearnScreen} options={{ title: 'Learn to Read' }} />
+      <LearnStack.Screen
+        name="Lesson"
+        component={LessonScreen}
+        options={({ route }) => ({
+          title: route.params.lessonId
+            .replace(/-/g, ' ')
+            .replace(/\b\w/g, (ch) => ch.toUpperCase()),
+          headerBackTitle: 'Learn',
+        })}
+      />
+    </LearnStack.Navigator>
   );
 }
 
@@ -98,13 +125,14 @@ export default function Navigation() {
           },
           tabBarActiveTintColor: Colors.gold,
           tabBarInactiveTintColor: c.textMuted,
-          tabBarLabelStyle: { fontSize: 11, fontWeight: '600', marginBottom: 2 },
+          tabBarLabelStyle: { fontSize: 10, fontWeight: '600', marginBottom: 2 },
           tabBarIcon: ({ focused, color, size }) => {
             type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
             const icons: Record<string, [IoniconName, IoniconName]> = {
               HomeTab: ['home', 'home-outline'],
               SurahsTab: ['book', 'book-outline'],
               PracticeTab: ['mic', 'mic-outline'],
+              LearnTab: ['school', 'school-outline'],
               ProgressTab: ['bar-chart', 'bar-chart-outline'],
             };
             const [active, inactive] = icons[route.name] ?? ['ellipse', 'ellipse-outline'];
@@ -115,6 +143,7 @@ export default function Navigation() {
         <Tab.Screen name="HomeTab" component={HomeScreen} options={{ title: 'Home' }} />
         <Tab.Screen name="SurahsTab" component={SurahNavigator} options={{ title: 'Surahs' }} />
         <Tab.Screen name="PracticeTab" component={PracticeNavigator} options={{ title: 'Practice' }} />
+        <Tab.Screen name="LearnTab" component={LearnNavigator} options={{ title: 'Learn' }} />
         <Tab.Screen name="ProgressTab" component={ProgressScreen} options={{ title: 'Progress' }} />
       </Tab.Navigator>
     </NavigationContainer>

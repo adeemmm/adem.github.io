@@ -21,9 +21,12 @@ import { Audio } from 'expo-av';
 
 import { Colors, Spacing, Radius, Typography } from '../theme';
 import { fetchSurahWithAyahs, getAudioUrl } from '../api/quranApi';
-import { markSurahStarted, addBookmark, isBookmarked } from '../utils/storage';
+import { fetchSurahWords } from '../api/quranComApi';
+import type { QuranVerse } from '../api/quranComApi';
+import { markSurahStarted, addBookmark } from '../utils/storage';
 import type { Ayah, SurahWithAyahs } from '../types';
 import type { SurahStackParamList } from '../navigation';
+import WordByWordAyah from '../components/WordByWordAyah';
 
 type RouteType = RouteProp<SurahStackParamList, 'SurahDetail'>;
 
@@ -45,6 +48,9 @@ export default function SurahDetailScreen() {
   const [playingIdx, setPlayingIdx] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showBeginner, setShowBeginner] = useState(false);
+  const [showWordView, setShowWordView] = useState(false);
+  const [wordData, setWordData] = useState<QuranVerse[] | null>(null);
+  const [wordDataLoading, setWordDataLoading] = useState(false);
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<number>>(new Set());
 
   const soundRef = useRef<Audio.Sound | null>(null);
@@ -63,6 +69,23 @@ export default function SurahDetailScreen() {
       soundRef.current?.unloadAsync();
     };
   }, [surahNumber]);
+
+  const toggleWordView = useCallback(async () => {
+    if (!showWordView && !wordData) {
+      setWordDataLoading(true);
+      try {
+        const verses = await fetchSurahWords(surahNumber);
+        setWordData(verses);
+        setShowWordView(true);
+      } catch {
+        // word view unavailable — silently stay in standard view
+      } finally {
+        setWordDataLoading(false);
+      }
+      return;
+    }
+    setShowWordView((v) => !v);
+  }, [showWordView, wordData, surahNumber]);
 
   const stopSound = useCallback(async () => {
     if (soundRef.current) {
@@ -137,15 +160,13 @@ export default function SurahDetailScreen() {
     [surah, surahNumber, bookmarkedIds]
   );
 
-  const styles = makeStyles(c, isDark);
+  const styles = makeStyles(c);
 
   if (loading) {
     return (
       <View style={[styles.center, { backgroundColor: c.background }]}>
         <ActivityIndicator size="large" color={Colors.gold} />
-        <Text style={[styles.loadingText, { color: c.textSecondary }]}>
-          Loading surah…
-        </Text>
+        <Text style={[styles.loadingText, { color: c.textSecondary }]}>Loading surah…</Text>
       </View>
     );
   }
@@ -154,15 +175,12 @@ export default function SurahDetailScreen() {
     return (
       <View style={[styles.center, { backgroundColor: c.background }]}>
         <Ionicons name="wifi-outline" size={48} color={c.textMuted} />
-        <Text style={[styles.errorText, { color: c.text }]}>
-          {error ?? 'Unknown error'}
-        </Text>
+        <Text style={[styles.errorText, { color: c.text }]}>{error ?? 'Unknown error'}</Text>
       </View>
     );
   }
 
-  const playingAyah =
-    playingIdx !== null ? surah.ayahs[playingIdx] : null;
+  const playingAyah = playingIdx !== null ? surah.ayahs[playingIdx] : null;
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
@@ -170,23 +188,26 @@ export default function SurahDetailScreen() {
         ref={flatListRef}
         data={surah.ayahs}
         keyExtractor={(a) => String(a.number)}
-        ListHeaderComponent={
-          <SurahHeader surah={surah} isDark={isDark} c={c} />
-        }
-        renderItem={({ item, index }) => (
-          <AyahCard
-            ayah={item}
-            index={index}
-            isPlaying={playingIdx === index && isPlaying}
-            isActive={playingIdx === index}
-            showBeginner={showBeginner}
-            isBookmarked={bookmarkedIds.has(item.numberInSurah)}
-            onPlay={() => playAyah(item)}
-            onBookmark={() => handleBookmark(item)}
-            isDark={isDark}
-            c={c}
-          />
-        )}
+        ListHeaderComponent={<SurahHeader surah={surah} />}
+        renderItem={({ item, index }) => {
+          const verseWords = wordData?.find((v) => v.verse_number === item.numberInSurah)?.words;
+          return (
+            <AyahCard
+              ayah={item}
+              index={index}
+              isPlaying={playingIdx === index && isPlaying}
+              isActive={playingIdx === index}
+              showBeginner={showBeginner}
+              showWordView={showWordView && !!verseWords}
+              words={verseWords}
+              isBookmarked={bookmarkedIds.has(item.numberInSurah)}
+              onPlay={() => playAyah(item)}
+              onBookmark={() => handleBookmark(item)}
+              isDark={isDark}
+              c={c}
+            />
+          );
+        }}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
         onScrollToIndexFailed={() => {}}
@@ -196,62 +217,61 @@ export default function SurahDetailScreen() {
       <View
         style={[
           styles.player,
-          { backgroundColor: isDark ? Colors.dark.surface : Colors.light.surface, borderTopColor: c.border },
+          {
+            backgroundColor: isDark ? Colors.dark.surface : Colors.light.surface,
+            borderTopColor: c.border,
+          },
         ]}
       >
-        <TouchableOpacity
-          style={styles.playerBtn}
-          onPress={() => setShowBeginner((v) => !v)}
-        >
-          <Ionicons
-            name={showBeginner ? 'eye' : 'eye-outline'}
-            size={20}
-            color={showBeginner ? Colors.gold : c.textMuted}
-          />
-          <Text style={[styles.playerBtnLabel, { color: showBeginner ? Colors.gold : c.textMuted }]}>
-            Beginner
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.playerLeft}>
+          <TouchableOpacity style={styles.playerToggle} onPress={() => setShowBeginner((v) => !v)}>
+            <Ionicons
+              name={showBeginner ? 'eye' : 'eye-outline'}
+              size={18}
+              color={showBeginner ? Colors.gold : c.textMuted}
+            />
+            <Text style={[styles.toggleLabel, { color: showBeginner ? Colors.gold : c.textMuted }]}>
+              Hint
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.playerToggle} onPress={toggleWordView} disabled={wordDataLoading}>
+            {wordDataLoading ? (
+              <ActivityIndicator size="small" color={Colors.gold} />
+            ) : (
+              <Ionicons
+                name={showWordView ? 'text' : 'text-outline'}
+                size={18}
+                color={showWordView ? Colors.gold : c.textMuted}
+              />
+            )}
+            <Text style={[styles.toggleLabel, { color: showWordView ? Colors.gold : c.textMuted }]}>
+              Words
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.playerCenter}>
           {playingAyah ? (
             <>
               <TouchableOpacity
-                onPress={() => {
-                  if (playingIdx !== null && playingIdx > 0) {
-                    playAyah(surah.ayahs[playingIdx - 1]);
-                  }
-                }}
+                onPress={() => { if (playingIdx !== null && playingIdx > 0) playAyah(surah.ayahs[playingIdx - 1]); }}
                 style={styles.playerIconBtn}
               >
                 <Ionicons name="play-skip-back" size={22} color={c.text} />
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.playMainBtn, { backgroundColor: Colors.primary }]}
-                onPress={togglePlayPause}
-              >
-                <Ionicons
-                  name={isPlaying ? 'pause' : 'play'}
-                  size={24}
-                  color={Colors.gold}
-                />
+              <TouchableOpacity style={[styles.playMainBtn, { backgroundColor: Colors.primary }]} onPress={togglePlayPause}>
+                <Ionicons name={isPlaying ? 'pause' : 'play'} size={24} color={Colors.gold} />
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => {
-                  if (playingIdx !== null && playingIdx < surah.ayahs.length - 1) {
-                    playAyah(surah.ayahs[playingIdx + 1]);
-                  }
-                }}
+                onPress={() => { if (playingIdx !== null && playingIdx < surah.ayahs.length - 1) playAyah(surah.ayahs[playingIdx + 1]); }}
                 style={styles.playerIconBtn}
               >
                 <Ionicons name="play-skip-forward" size={22} color={c.text} />
               </TouchableOpacity>
             </>
           ) : (
-            <TouchableOpacity
-              style={[styles.playMainBtn, { backgroundColor: Colors.primary }]}
-              onPress={() => playAyah(surah.ayahs[0])}
-            >
+            <TouchableOpacity style={[styles.playMainBtn, { backgroundColor: Colors.primary }]} onPress={() => playAyah(surah.ayahs[0])}>
               <Ionicons name="play" size={24} color={Colors.gold} />
             </TouchableOpacity>
           )}
@@ -272,13 +292,7 @@ export default function SurahDetailScreen() {
   );
 }
 
-function SurahHeader({
-  surah, isDark, c,
-}: {
-  surah: SurahWithAyahs;
-  isDark: boolean;
-  c: typeof Colors.dark;
-}) {
+function SurahHeader({ surah }: { surah: SurahWithAyahs }) {
   return (
     <View style={[headerStyles.wrap, { backgroundColor: Colors.primary }]}>
       <Text style={headerStyles.arabicName}>{surah.name}</Text>
@@ -300,14 +314,16 @@ function SurahHeader({
 }
 
 const AyahCard = React.memo(function AyahCard({
-  ayah, index, isPlaying, isActive, showBeginner,
-  isBookmarked, onPlay, onBookmark, isDark, c,
+  ayah, index, isPlaying, isActive, showBeginner, showWordView,
+  words, isBookmarked, onPlay, onBookmark, isDark, c,
 }: {
   ayah: Ayah;
   index: number;
   isPlaying: boolean;
   isActive: boolean;
   showBeginner: boolean;
+  showWordView: boolean;
+  words?: any[];
   isBookmarked: boolean;
   onPlay: () => void;
   onBookmark: () => void;
@@ -320,23 +336,16 @@ const AyahCard = React.memo(function AyahCard({
         cardStyles.card,
         {
           backgroundColor: isActive
-            ? isDark
-              ? 'rgba(201,168,76,0.08)'
-              : 'rgba(201,168,76,0.06)'
-            : isDark
-            ? Colors.dark.surface
-            : Colors.light.surface,
+            ? isDark ? 'rgba(201,168,76,0.08)' : 'rgba(201,168,76,0.06)'
+            : isDark ? Colors.dark.surface : Colors.light.surface,
           borderLeftWidth: isActive ? 3 : 0,
           borderLeftColor: Colors.gold,
         },
       ]}
     >
-      {/* Ayah number + actions row */}
       <View style={cardStyles.topRow}>
         <View style={[cardStyles.numCircle, { borderColor: isDark ? Colors.dark.border : Colors.light.border }]}>
-          <Text style={[cardStyles.numText, { color: Colors.gold }]}>
-            {ayah.numberInSurah}
-          </Text>
+          <Text style={[cardStyles.numText, { color: Colors.gold }]}>{ayah.numberInSurah}</Text>
         </View>
         <View style={cardStyles.actions}>
           <TouchableOpacity onPress={onBookmark} style={cardStyles.actionBtn}>
@@ -356,28 +365,25 @@ const AyahCard = React.memo(function AyahCard({
         </View>
       </View>
 
-      {/* Arabic text */}
-      <Text style={[cardStyles.arabic, { color: c.text }]}>{ayah.text}</Text>
+      {showWordView && words ? (
+        <WordByWordAyah words={words} textColor={c.text} isDark={isDark} />
+      ) : (
+        <Text style={[cardStyles.arabic, { color: c.text }]}>{ayah.text}</Text>
+      )}
 
-      {/* Transliteration */}
       {ayah.transliteration && (
-        <Text style={[cardStyles.translit, { color: c.textSecondary }]}>
-          {ayah.transliteration}
-        </Text>
+        <Text style={[cardStyles.translit, { color: c.textSecondary }]}>{ayah.transliteration}</Text>
       )}
-
-      {/* Translation */}
       {ayah.translation && (
-        <Text style={[cardStyles.translation, { color: c.textMuted }]}>
-          {ayah.translation}
-        </Text>
+        <Text style={[cardStyles.translation, { color: c.textMuted }]}>{ayah.translation}</Text>
       )}
 
-      {/* Beginner mode hint */}
       {showBeginner && (
         <View style={[cardStyles.beginnerHint, { backgroundColor: isDark ? Colors.dark.surfaceRaised : '#eaf4ee' }]}>
           <Text style={[cardStyles.beginnerText, { color: Colors.gold }]}>
-            Tap the play button to hear this ayah · Follow the transliteration above
+            {showWordView
+              ? 'Hover (or tap) each word to see its meaning · Colours show tajweed rules'
+              : 'Tap ▶ to hear this ayah · Follow the transliteration above'}
           </Text>
         </View>
       )}
@@ -385,7 +391,7 @@ const AyahCard = React.memo(function AyahCard({
   );
 });
 
-function makeStyles(c: typeof Colors.dark, isDark: boolean) {
+function makeStyles(c: typeof Colors.dark) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: c.background },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl },
@@ -399,8 +405,9 @@ function makeStyles(c: typeof Colors.dark, isDark: boolean) {
       paddingVertical: Spacing.sm,
       borderTopWidth: StyleSheet.hairlineWidth,
     },
-    playerBtn: { alignItems: 'center', width: 64 },
-    playerBtnLabel: { ...Typography.small, marginTop: 2 },
+    playerLeft: { flexDirection: 'row', gap: Spacing.sm, width: 84 },
+    playerToggle: { alignItems: 'center', minWidth: 36 },
+    toggleLabel: { ...Typography.small, marginTop: 2 },
     playerCenter: {
       flex: 1,
       flexDirection: 'row',
@@ -409,7 +416,7 @@ function makeStyles(c: typeof Colors.dark, isDark: boolean) {
       gap: Spacing.lg,
     },
     playerRight: {
-      width: 64,
+      width: 84,
       alignItems: 'center',
       flexDirection: 'row',
       gap: Spacing.sm,
@@ -428,11 +435,7 @@ function makeStyles(c: typeof Colors.dark, isDark: boolean) {
 }
 
 const headerStyles = StyleSheet.create({
-  wrap: {
-    padding: Spacing.xl,
-    alignItems: 'center',
-    paddingBottom: Spacing.xxl,
-  },
+  wrap: { padding: Spacing.xl, alignItems: 'center', paddingBottom: Spacing.xxl },
   arabicName: {
     fontFamily: 'NotoNaskhArabic_400Regular',
     fontSize: 36,
@@ -508,19 +511,11 @@ const cardStyles = StyleSheet.create({
     marginBottom: Spacing.sm,
     color: '#7aaa8a',
   },
-  translation: {
-    ...Typography.body,
-    lineHeight: 22,
-    marginBottom: Spacing.xs,
-  },
+  translation: { ...Typography.body, lineHeight: 22, marginBottom: Spacing.xs },
   beginnerHint: {
     marginTop: Spacing.sm,
     padding: Spacing.sm,
     borderRadius: Radius.sm,
   },
-  beginnerText: {
-    ...Typography.small,
-    lineHeight: 18,
-    textAlign: 'center',
-  },
+  beginnerText: { ...Typography.small, lineHeight: 18, textAlign: 'center' },
 });
