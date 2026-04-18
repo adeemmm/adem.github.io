@@ -1,24 +1,26 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
+  FlatList,
   ActivityIndicator,
   useColorScheme,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { Colors, Spacing, Radius, Typography } from '../theme';
 import { fetchAllSurahs } from '../api/quranApi';
 import type { Surah } from '../types';
-import type { RootTabParamList } from '../navigation';
+import type { PracticeStackParamList } from '../navigation';
 
-type NavProp = BottomTabNavigationProp<RootTabParamList, 'PracticeTab'>;
+type NavProp = NativeStackNavigationProp<PracticeStackParamList, 'PracticeSelect'>;
+
+const BEGINNER_NUMBERS = [1, 112, 113, 114, 110, 108, 103, 102, 101, 100, 99, 98];
 
 export default function PracticeScreen() {
   const scheme = useColorScheme();
@@ -29,19 +31,27 @@ export default function PracticeScreen() {
 
   const [surahs, setSurahs] = useState<Surah[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<Surah | null>(null);
 
   useEffect(() => {
     fetchAllSurahs()
-      .then((data) => setSurahs(data.slice(0, 30)))
+      .then(setSurahs)
       .finally(() => setLoading(false));
   }, []);
 
-  const beginnerSurahs = surahs.filter((s) =>
-    [1, 112, 113, 114, 110, 108, 103, 102, 101].includes(s.number)
-  );
+  const beginnerSurahs = surahs.filter((s) => BEGINNER_NUMBERS.includes(s.number))
+    .sort((a, b) => BEGINNER_NUMBERS.indexOf(a.number) - BEGINNER_NUMBERS.indexOf(b.number));
 
-  const styles = makeStyles(c, isDark);
+  const otherShortSurahs = surahs
+    .filter((s) => !BEGINNER_NUMBERS.includes(s.number) && s.numberOfAyahs <= 30)
+    .sort((a, b) => a.numberOfAyahs - b.numberOfAyahs);
+
+  const handleSelect = (surah: Surah) => {
+    navigation.navigate('PracticeSession', {
+      surahNumber: surah.number,
+      surahName: surah.name,
+      englishName: surah.englishName,
+    });
+  };
 
   if (loading) {
     return (
@@ -52,193 +62,117 @@ export default function PracticeScreen() {
   }
 
   return (
-    <ScrollView
-      style={[styles.container, { paddingTop: insets.top }]}
-      contentContainerStyle={styles.content}
+    <FlatList
+      style={{ backgroundColor: c.background }}
+      contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.xl }]}
       showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.headerWrap}>
-        <Text style={[styles.title, { color: c.text }]}>Practice Mode</Text>
-        <Text style={[styles.subtitle, { color: c.textSecondary }]}>
-          Select a surah to begin memorization practice
-        </Text>
-      </View>
-
-      {/* Beginner picks */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>
-          RECOMMENDED FOR BEGINNERS
-        </Text>
-        {beginnerSurahs.map((s) => (
-          <TouchableOpacity
-            key={s.number}
-            style={[
-              styles.surahRow,
-              {
-                backgroundColor:
-                  selected?.number === s.number
-                    ? Colors.primary
-                    : isDark ? Colors.dark.surface : Colors.light.surface,
-                borderColor:
-                  selected?.number === s.number ? Colors.gold : 'transparent',
-              },
-            ]}
-            onPress={() => setSelected(s)}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.numCircle, { borderColor: Colors.gold }]}>
-              <Text style={[styles.numText, { color: Colors.gold }]}>
-                {s.number}
-              </Text>
-            </View>
-            <View style={styles.surahInfo}>
-              <Text
-                style={[
-                  styles.surahName,
-                  { color: selected?.number === s.number ? '#fff' : c.text },
-                ]}
-              >
-                {s.englishName}
-              </Text>
-              <Text
-                style={[
-                  styles.surahMeta,
-                  {
-                    color:
-                      selected?.number === s.number
-                        ? 'rgba(255,255,255,0.7)'
-                        : c.textMuted,
-                  },
-                ]}
-              >
-                {s.numberOfAyahs} ayahs · {s.revelationType}
-              </Text>
-            </View>
-            <Text
-              style={[
-                styles.surahArabic,
-                { color: selected?.number === s.number ? Colors.gold : c.textSecondary },
-              ]}
-            >
-              {s.name}
+      ListHeaderComponent={
+        <>
+          <View style={[styles.header, { backgroundColor: Colors.primary }]}>
+            <Ionicons name="mic" size={28} color={Colors.gold} style={{ marginBottom: Spacing.sm }} />
+            <Text style={styles.headerTitle}>Practice Mode</Text>
+            <Text style={styles.headerSub}>
+              Select a surah · read the transliteration · reveal Arabic to check yourself
             </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+          </View>
 
-      {selected && (
-        <View style={styles.startWrap}>
-          <TouchableOpacity
-            style={[styles.startBtn, { backgroundColor: Colors.primary }]}
-            onPress={() => navigation.navigate('SurahsTab')}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="mic" size={20} color={Colors.gold} />
-            <Text style={styles.startBtnText}>
-              Practice {selected.englishName}
-            </Text>
-          </TouchableOpacity>
-          <Text style={[styles.startNote, { color: c.textMuted }]}>
-            Full practice mode with audio recording coming soon
-          </Text>
-        </View>
+          <SectionLabel label="RECOMMENDED FOR BEGINNERS" c={c} />
+          {beginnerSurahs.map((s) => (
+            <SurahRow key={s.number} surah={s} onPress={handleSelect} isDark={isDark} c={c} />
+          ))}
+
+          <SectionLabel label="OTHER SHORT SURAHS" c={c} />
+        </>
+      }
+      data={otherShortSurahs}
+      keyExtractor={(s) => String(s.number)}
+      renderItem={({ item }) => (
+        <SurahRow surah={item} onPress={handleSelect} isDark={isDark} c={c} />
       )}
-
-      <View style={[styles.comingSoonCard, { backgroundColor: isDark ? Colors.dark.surface : Colors.light.surface }]}>
-        <Ionicons name="construct" size={32} color={Colors.gold} style={{ marginBottom: Spacing.sm }} />
-        <Text style={[styles.comingSoonTitle, { color: c.text }]}>
-          Full Practice Mode
-        </Text>
-        <Text style={[styles.comingSoonText, { color: c.textSecondary }]}>
-          Record your recitation and compare it with a professional reciter.
-          Track which ayahs you've mastered.
-        </Text>
-      </View>
-    </ScrollView>
+    />
   );
 }
 
-function makeStyles(c: typeof Colors.dark, isDark: boolean) {
-  return StyleSheet.create({
-    container: { flex: 1, backgroundColor: c.background },
-    content: { paddingBottom: Spacing.xxl },
-    center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    headerWrap: {
-      paddingHorizontal: Spacing.lg,
-      paddingTop: Spacing.lg,
-      paddingBottom: Spacing.md,
-      backgroundColor: Colors.primary,
-    },
-    title: { ...Typography.heading, color: '#fff' },
-    subtitle: { ...Typography.body, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
-    section: { marginTop: Spacing.xl, paddingHorizontal: Spacing.md },
-    sectionLabel: {
-      ...Typography.small,
-      letterSpacing: 1,
-      fontWeight: '700',
-      marginBottom: Spacing.sm,
-    },
-    surahRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: Spacing.md,
-      borderRadius: Radius.md,
-      marginBottom: Spacing.sm,
-      borderWidth: 1.5,
-    },
-    numCircle: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      borderWidth: 1.5,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginRight: Spacing.md,
-    },
-    numText: { fontSize: 12, fontWeight: '700' },
-    surahInfo: { flex: 1 },
-    surahName: { ...Typography.subheading },
-    surahMeta: { ...Typography.caption, marginTop: 2 },
-    surahArabic: {
-      fontFamily: 'NotoNaskhArabic_400Regular',
-      fontSize: 18,
-      textAlign: 'right',
-      writingDirection: 'rtl',
-      marginLeft: Spacing.sm,
-    },
-    startWrap: {
-      paddingHorizontal: Spacing.md,
-      marginTop: Spacing.xl,
-      alignItems: 'center',
-    },
-    startBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: Spacing.sm,
-      paddingVertical: Spacing.md,
-      paddingHorizontal: Spacing.xl,
-      borderRadius: Radius.round,
-      borderWidth: 1,
-      borderColor: Colors.gold,
-    },
-    startBtnText: {
-      color: Colors.gold,
-      fontWeight: '700',
-      fontSize: 16,
-    },
-    startNote: {
-      ...Typography.caption,
-      marginTop: Spacing.sm,
-      textAlign: 'center',
-    },
-    comingSoonCard: {
-      margin: Spacing.md,
-      marginTop: Spacing.xl,
-      padding: Spacing.xl,
-      borderRadius: Radius.lg,
-      alignItems: 'center',
-    },
-    comingSoonTitle: { ...Typography.subheading, marginBottom: Spacing.sm },
-    comingSoonText: { ...Typography.body, textAlign: 'center', lineHeight: 22 },
-  });
+function SectionLabel({ label, c }: { label: string; c: typeof Colors.dark }) {
+  return (
+    <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{label}</Text>
+  );
 }
+
+const SurahRow = React.memo(function SurahRow({
+  surah, onPress, isDark, c,
+}: {
+  surah: Surah;
+  onPress: (s: Surah) => void;
+  isDark: boolean;
+  c: typeof Colors.dark;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.row, { backgroundColor: isDark ? Colors.dark.surface : Colors.light.surface }]}
+      onPress={() => onPress(surah)}
+      activeOpacity={0.75}
+    >
+      <View style={styles.numCircle}>
+        <Text style={styles.numText}>{surah.number}</Text>
+      </View>
+      <View style={styles.info}>
+        <Text style={[styles.name, { color: c.text }]}>{surah.englishName}</Text>
+        <Text style={[styles.meta, { color: c.textMuted }]}>
+          {surah.numberOfAyahs} ayahs · {surah.revelationType}
+        </Text>
+      </View>
+      <Text style={[styles.arabic, { color: c.textSecondary }]}>{surah.name}</Text>
+      <Ionicons name="chevron-forward" size={16} color={c.textMuted} style={{ marginLeft: Spacing.xs }} />
+    </TouchableOpacity>
+  );
+});
+
+const styles = StyleSheet.create({
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  content: {},
+  header: {
+    padding: Spacing.xl,
+    paddingTop: Spacing.lg,
+    alignItems: 'center',
+  },
+  headerTitle: { ...Typography.heading, color: '#fff', marginBottom: Spacing.xs },
+  headerSub: { ...Typography.caption, color: 'rgba(255,255,255,0.7)', textAlign: 'center', lineHeight: 18 },
+  sectionLabel: {
+    ...Typography.small,
+    letterSpacing: 1,
+    fontWeight: '700',
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.xs,
+    marginHorizontal: Spacing.md,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.xs,
+    padding: Spacing.md,
+    borderRadius: Radius.md,
+  },
+  numCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: Colors.gold,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  numText: { color: Colors.gold, fontSize: 12, fontWeight: '700' },
+  info: { flex: 1 },
+  name: { ...Typography.subheading },
+  meta: { ...Typography.caption, marginTop: 2 },
+  arabic: {
+    fontFamily: 'NotoNaskhArabic_400Regular',
+    fontSize: 18,
+    writingDirection: 'rtl',
+    marginLeft: Spacing.sm,
+  },
+});

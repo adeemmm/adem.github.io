@@ -9,16 +9,18 @@ import HomeScreen from '../screens/HomeScreen';
 import SurahListScreen from '../screens/SurahListScreen';
 import SurahDetailScreen from '../screens/SurahDetailScreen';
 import PracticeScreen from '../screens/PracticeScreen';
+import PracticeSessionScreen from '../screens/PracticeSessionScreen';
 import ProgressScreen from '../screens/ProgressScreen';
 import { Colors } from '../theme';
 
 export type SurahStackParamList = {
   SurahList: undefined;
-  SurahDetail: {
-    surahNumber: number;
-    surahName: string;
-    englishName: string;
-  };
+  SurahDetail: { surahNumber: number; surahName: string; englishName: string };
+};
+
+export type PracticeStackParamList = {
+  PracticeSelect: undefined;
+  PracticeSession: { surahNumber: number; surahName: string; englishName: string };
 };
 
 export type RootTabParamList = {
@@ -30,34 +32,37 @@ export type RootTabParamList = {
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
 const SurahStack = createNativeStackNavigator<SurahStackParamList>();
+const PracticeStack = createNativeStackNavigator<PracticeStackParamList>();
+
+const STACK_HEADER_OPTIONS = {
+  headerStyle: { backgroundColor: Colors.primary },
+  headerTintColor: Colors.gold,
+  headerTitleStyle: { fontWeight: '700' as const, color: '#fff' },
+};
 
 function SurahNavigator() {
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
-  const c = isDark ? Colors.dark : Colors.light;
-
   return (
-    <SurahStack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: Colors.primary },
-        headerTintColor: Colors.gold,
-        headerTitleStyle: { fontWeight: '700', color: '#fff' },
-      }}
-    >
-      <SurahStack.Screen
-        name="SurahList"
-        component={SurahListScreen}
-        options={{ title: 'Surahs' }}
-      />
+    <SurahStack.Navigator screenOptions={STACK_HEADER_OPTIONS}>
+      <SurahStack.Screen name="SurahList" component={SurahListScreen} options={{ title: 'Surahs' }} />
       <SurahStack.Screen
         name="SurahDetail"
         component={SurahDetailScreen}
-        options={({ route }) => ({
-          title: route.params.englishName,
-          headerBackTitle: 'Surahs',
-        })}
+        options={({ route }) => ({ title: route.params.englishName, headerBackTitle: 'Surahs' })}
       />
     </SurahStack.Navigator>
+  );
+}
+
+function PracticeNavigator() {
+  return (
+    <PracticeStack.Navigator screenOptions={STACK_HEADER_OPTIONS}>
+      <PracticeStack.Screen name="PracticeSelect" component={PracticeScreen} options={{ title: 'Practice' }} />
+      <PracticeStack.Screen
+        name="PracticeSession"
+        component={PracticeSessionScreen}
+        options={({ route }) => ({ title: route.params.englishName, headerBackTitle: 'Practice' })}
+      />
+    </PracticeStack.Navigator>
   );
 }
 
@@ -107,26 +112,10 @@ export default function Navigation() {
           },
         })}
       >
-        <Tab.Screen
-          name="HomeTab"
-          component={HomeScreen}
-          options={{ title: 'Home' }}
-        />
-        <Tab.Screen
-          name="SurahsTab"
-          component={SurahNavigator}
-          options={{ title: 'Surahs' }}
-        />
-        <Tab.Screen
-          name="PracticeTab"
-          component={PracticeScreen}
-          options={{ title: 'Practice' }}
-        />
-        <Tab.Screen
-          name="ProgressTab"
-          component={ProgressScreen}
-          options={{ title: 'Progress' }}
-        />
+        <Tab.Screen name="HomeTab" component={HomeScreen} options={{ title: 'Home' }} />
+        <Tab.Screen name="SurahsTab" component={SurahNavigator} options={{ title: 'Surahs' }} />
+        <Tab.Screen name="PracticeTab" component={PracticeNavigator} options={{ title: 'Practice' }} />
+        <Tab.Screen name="ProgressTab" component={ProgressScreen} options={{ title: 'Progress' }} />
       </Tab.Navigator>
     </NavigationContainer>
   );
