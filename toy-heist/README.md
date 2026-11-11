@@ -17,6 +17,7 @@ Open two tabs (use **Play as Guest** for quick tests), create a lobby in one and
 
 | Path | Purpose |
 | --- | --- |
+| `Dockerfile`, `.dockerignore` | Production image build |
 | `server/index.js` | Express static hosting + Colyseus server bootstrap |
 | `server/rooms/HeistRoom.js` | Lobby, join codes, role assignment, 30 Hz authoritative loop, snapshots |
 | `server/rooms/schema/HeistState.js` | Low-frequency replicated state (roster, roles, phase) |
@@ -132,6 +133,28 @@ Timings can be overridden with `HEIST_CHAOS_CALM_SECONDS`, `HEIST_CHAOS_VOTE_SEC
   Royal Toy (600), Night Guard, Gold Guard (400). Purchases are validated on the server.
 - **Sync.** Equipped skin ids are part of each player's replicated state, so everyone sees the
   matching model. Gold, unlocks and stats are sent only to their owner.
+
+## Deployment (Docker)
+
+```bash
+docker build -t toy-heist .
+docker run -d --name toy-heist --restart unless-stopped \
+  -p 2567:2567 -v toy-heist-data:/data \
+  -e TWITCH_CHANNEL=yourchannel \
+  toy-heist
+```
+
+- The image is a two-stage build on `node:22-bookworm-slim`; it runs as the non-root `node` user with
+  `NODE_ENV=production`, and has a health check on `/api/health`.
+- The SQLite database lives at `/data/toy_heist.db`. Mount a volume there or accounts, gold and skins
+  are lost when the container is replaced. Run a single instance: lobbies, sessions and the database
+  are all local to one process.
+- Put it behind a TLS-terminating reverse proxy that forwards WebSocket upgrades. In production the
+  server trusts one proxy hop (`trust proxy = 1`), so the login rate limit sees real client addresses
+  from `X-Forwarded-For`. If there are two proxies in front (for example a CDN plus nginx), raise
+  that number to match, and never expose the container port directly to the internet.
+- The server imports `@colyseus/core` and `@colyseus/ws-transport` directly instead of the `colyseus`
+  meta-package, which pulls in a git-hosted dependency that cannot be installed in a clean image.
 
 ## Not yet built
 

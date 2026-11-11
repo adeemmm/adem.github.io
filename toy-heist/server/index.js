@@ -9,7 +9,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
-import { Server, matchMaker } from "colyseus";
+import { Server, matchMaker } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { HeistRoom } from "./rooms/HeistRoom.js";
 import { getDatabase } from "./db/database.js";
@@ -20,6 +20,12 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PORT) || 2567;
 
 const app = express();
+
+// In production the server sits behind a reverse proxy / load balancer. Trusting
+// exactly one proxy hop makes req.ip the real client address (from
+// X-Forwarded-For) instead of the proxy's, which the login rate limiter relies on.
+// Left off in development, where a client could otherwise spoof the header.
+if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 app.use(express.static(path.join(ROOT, "public")));
 app.use("/vendor/three", express.static(path.join(ROOT, "node_modules/three/build")));
 app.use("/vendor/colyseus", express.static(path.join(ROOT, "node_modules/colyseus.js/dist")));

@@ -1,4 +1,4 @@
-import { Room, ServerError } from "colyseus";
+import { Room, ServerError } from "@colyseus/core";
 import { HeistState, PlayerState } from "./schema/HeistState.js";
 import { SpatialHash } from "../sim/SpatialHash.js";
 import { LootSystem } from "../sim/LootSystem.js";

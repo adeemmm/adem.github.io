@@ -1,0 +1,28 @@
+# Dependencies are installed inside the image (native modules must match its libc).
+node_modules
+npm-debug.log*
+
+# Version control and local tooling
+.git
+.gitignore
+.dockerignore
+Dockerfile
+.vscode
+.idea
+
+# Secrets and local configuration
+.env
+.env.*
+
+# Local SQLite databases (production data lives on the /data volume)
+toy_heist.db
+toy_heist.db-wal
+toy_heist.db-shm
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+
+# Not needed at runtime
+README.md
+*.log
