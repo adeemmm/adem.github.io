@@ -2,6 +2,8 @@
 //   HEIST_MATCH_SECONDS=120 HEIST_TARGET_SCORE=200 npm start
 //   TWITCH_CHANNEL=mychannel npm start          (enables Chaos Mode)
 // (Read from the environment only - never from client-supplied room options.)
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   MATCH_SECONDS, TARGET_SCORE, CHAOS_CALM_SECONDS, CHAOS_VOTE_SECONDS, CHAOS_EVENT_SECONDS,
 } from "../public/js/shared/constants.js";
@@ -19,7 +21,12 @@ function twitchChannel(value) {
 
 const channel = twitchChannel(process.env.TWITCH_CHANNEL);
 
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
 export const config = {
+  // SQLite file for player progression. ":memory:" gives a throwaway database.
+  dbPath: process.env.HEIST_DB_PATH || path.join(projectRoot, "toy_heist.db"),
+
   matchSeconds: positiveInt(process.env.HEIST_MATCH_SECONDS, MATCH_SECONDS, 3600),
   targetScore: positiveInt(process.env.HEIST_TARGET_SCORE, TARGET_SCORE, 60000),
 

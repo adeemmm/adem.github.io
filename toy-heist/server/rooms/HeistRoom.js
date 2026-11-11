@@ -5,11 +5,13 @@ import { LootSystem } from "../sim/LootSystem.js";
 import { JailSystem } from "../sim/JailSystem.js";
 import { VisionSystem } from "../sim/VisionSystem.js";
 import { ChaosEngine } from "../sim/TwitchChaos.js";
+import { Progression } from "../sim/Progression.js";
+import { getDatabase } from "../db/database.js";
 import { config } from "../config.js";
 import {
   TICK_MS, TICK_DT, TICK_RATE, MAX_PLAYERS, MAX_GUARDS, TOYS_PER_GUARD,
   ROLE_TOY, ROLE_GUARD, PHASE_LOBBY, PHASE_PLAYING, PHASE_ENDED, TEAM_TOYS, TEAM_GUARDS, VISION_EVERY,
-  MSG_INPUT, MSG_SNAPSHOT, MSG_START, MSG_EVENT,
+  MSG_INPUT, MSG_SNAPSHOT, MSG_START, MSG_EVENT, MSG_SHOP,
   AOI_CELL_SIZE, AOI_NEAR_CELLS, FAR_UPDATE_EVERY, LOOT_TYPES,
 } from "../../public/js/shared/constants.js";
 import { createBody, stepBody, sanitizeInput } from "../../public/js/shared/movement.js";
@@ -60,6 +62,7 @@ export class HeistRoom extends Room {
     this.jail = new JailSystem(this.state, this.loot);
     this.vision = new VisionSystem();
     this.chaos = new ChaosEngine(this.state, this.loot);   // Twitch-voted events (off unless configured)
+    this.progress = new Progression(this.state, getDatabase());   // gold, unlocks, skins
 
     this.state.targetScore = config.targetScore;
     this.state.timeLeft = config.matchSeconds;
@@ -72,6 +75,11 @@ export class HeistRoom extends Room {
       rec.lastQueuedSeq = input.s;
       if (rec.inputs.length >= MAX_INPUT_QUEUE) rec.inputs.shift();
       rec.inputs.push(input);
+    });
+
+    this.onMessage(MSG_SHOP, (client, message) => {
+      const rec = this.sim.get(client.sessionId);
+      if (rec) this.progress.handleShop(rec, this.sim, message);
     });
 
     this.onMessage(MSG_START, (client) => {
@@ -87,13 +95,16 @@ export class HeistRoom extends Room {
   onJoin(client, options) {
     const p = new PlayerState();
     p.nid = this.freeNids.pop();
-    p.name = cleanName(options && options.name, p.nid);
+    const givenName = cleanName(options && options.name);
+    p.name = givenName || `Player${p.nid}`;
     p.role = this.pickRoleForNewPlayer();
     p.host = this.state.players.size === 0;
     this.state.players.set(client.sessionId, p);
 
     const rec = {
       client, state: p,
+      account: givenName || null,   // persistence key; null = guest (no name entered)
+      deposits: 0,    // loot items banked in the current match
       body: createBody(),
       inputs: [],
       lastQueuedSeq: -1,
@@ -110,6 +121,7 @@ export class HeistRoom extends Room {
     };
     this.sim.set(client.sessionId, rec);
     this.spawn(rec, this.countRole(p.role) - 1);
+    this.progress.load(rec);
     console.log(`[room ${this.code}] ${p.name} joined as ${p.role} (${this.state.players.size}/${MAX_PLAYERS})`);
   }
 
@@ -168,6 +180,7 @@ export class HeistRoom extends Room {
     this.matchEndTick = this.tick + config.matchSeconds * TICK_RATE;
     this.chaos.start(this.sim);
     recs.forEach((rec, i) => {
+      rec.deposits = 0;
       rec.state.score = 0;
       rec.state.arrests = 0;
       rec.state.rescues = 0;
@@ -197,6 +210,8 @@ export class HeistRoom extends Room {
     this.state.phase = PHASE_ENDED;
     this.jail.resetLever();
     this.chaos.stop(this.sim);
+    const saved = this.progress.awardMatch(this.sim, winner);   // gold + lifetime stats -> SQLite
+    console.log(`[room ${this.code}] saved rewards for ${saved} players`);
     console.log(`[room ${this.code}] match over: ${winner} win (${reason}), score ${this.state.score}/${this.state.targetScore}`);
   }
 
@@ -255,6 +270,7 @@ export class HeistRoom extends Room {
       if (!deposit) continue;
       this.state.score += deposit.points;
       rec.state.score += deposit.points;
+      if (this.state.phase === PHASE_PLAYING) rec.deposits++;
       this.broadcast(MSG_EVENT, { k: "deposit", n: rec.state.nid, t: deposit.type, p: deposit.points });
     }
 
@@ -327,7 +343,7 @@ function idleInputFor(rec) {
   return IDLE_INPUT;
 }
 
-function cleanName(raw, nid) {
-  const name = typeof raw === "string" ? raw.replace(/[^\w \-]/g, "").trim().slice(0, 16) : "";
-  return name || `Player${nid}`;
+/** Sanitised display name, or "" if the player did not enter a usable one. */
+function cleanName(raw) {
+  return typeof raw === "string" ? raw.replace(/[^\w \-]/g, "").trim().slice(0, 16) : "";
 }

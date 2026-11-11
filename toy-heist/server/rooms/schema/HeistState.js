@@ -7,6 +7,7 @@
 
 import { Schema, MapSchema, defineTypes } from "@colyseus/schema";
 import { PHASE_LOBBY, ROLE_TOY, STATUS_ACTIVE, MATCH_SECONDS, TARGET_SCORE, CHAOS_OFF } from "../../../public/js/shared/constants.js";
+import { DEFAULT_TOY_SKIN, DEFAULT_GUARD_SKIN } from "../../../public/js/shared/cosmetics.js";
 
 export class PlayerState extends Schema {
   constructor() {
@@ -19,11 +20,13 @@ export class PlayerState extends Schema {
     this.status = STATUS_ACTIVE;   // toys only: active | jailed
     this.arrests = 0;      // guards: toys arrested this match
     this.rescues = 0;      // toys: team-mates freed from jail this match
+    this.skin = DEFAULT_TOY_SKIN;          // cosmetic worn when playing as a toy
+    this.guardSkin = DEFAULT_GUARD_SKIN;   // cosmetic worn when playing as a guard
   }
 }
 defineTypes(PlayerState, {
   nid: "uint8", name: "string", role: "string", host: "boolean", score: "uint32",
-  status: "string", arrests: "uint8", rescues: "uint8",
+  status: "string", arrests: "uint8", rescues: "uint8", skin: "string", guardSkin: "string",
 });
 
 export class LootState extends Schema {

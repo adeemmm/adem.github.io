@@ -16,6 +16,8 @@ import { AudioEngine, Footsteps } from "./audio.js";
 import { StreamerUI } from "./streamerUI.js";
 import { ChaosEffects } from "./chaos.js";
 import { JAIL } from "./shared/map.js";
+import { ShopUI } from "./shop.js";
+import { resolveSkin } from "./shared/cosmetics.js";
 import { extractionZoneAt } from "./shared/map.js";
 import { LootView } from "./loot.js";
 import { buildWorld } from "./world.js";
@@ -86,7 +88,7 @@ let detected = [];     // guard only: nids of toys in our flashlight beam (from 
 let spotted = false;   // toy only: a guard has us in their beam
 
 // Local player
-const local = { role: ROLE_TOY, status: STATUS_ACTIVE, nid: 0, name: "", model: null, pos: new THREE.Vector3(), yaw: 0 };
+const local = { role: ROLE_TOY, status: STATUS_ACTIVE, nid: 0, name: "", skin: "", model: null, pos: new THREE.Vector3(), yaw: 0 };
 
 // Remote players: sessionId -> { nid, role, name, model, buffer }
 const remotes = new Map();
@@ -99,8 +101,11 @@ function avatarOf(nid) {
   return r ? r.model : null;
 }
 
-function buildAvatar(role, nid, name, withTag) {
-  const model = createPlayerModel(role, nid);
+// The skin a player is showing right now: their toy or guard cosmetic, by role.
+const skinOf = (p) => resolveSkin(p.role, p.role === ROLE_GUARD ? p.guardSkin : p.skin);
+
+function buildAvatar(role, nid, name, withTag, skin) {
+  const model = createPlayerModel(role, nid, skin);
   if (withTag) model.add(createNameTag(name, role));
   scene.add(model);
   return model;
@@ -121,9 +126,11 @@ net.onState = (state) => {
     if (p.role === ROLE_TOY) { toys++; if (p.status === STATUS_JAILED) jailed++; }
 
     if (sessionId === net.sessionId) {
-      if (!local.model || local.role !== p.role) {
+      const skin = skinOf(p);
+      if (!local.model || local.role !== p.role || local.skin !== skin) {
         destroyAvatar(local.model);
-        local.model = buildAvatar(p.role, p.nid, p.name, false);
+        local.model = buildAvatar(p.role, p.nid, p.name, false, skin);
+        local.skin = skin;
         local.model.visible = prediction.ready;
       }
       local.role = p.role; local.nid = p.nid; local.name = p.name; local.host = p.host;
@@ -134,15 +141,24 @@ net.onState = (state) => {
 
     let r = remotes.get(sessionId);
     if (!r) {
-      r = { nid: p.nid, role: null, name: p.name, model: null, buffer: new SnapshotBuffer() };
+      r = { nid: p.nid, role: null, skin: "", name: p.name, model: null, buffer: new SnapshotBuffer() };
       remotes.set(sessionId, r);
       remotesByNid.set(p.nid, r);
     }
-    if (r.role !== p.role) {             // new player, or roles were reshuffled
-      destroyAvatar(r.model);
+    const skin = skinOf(p);
+    if (r.role !== p.role || r.skin !== skin) {   // new player, reshuffled roles, or a new cosmetic
+      const wasVisible = !!r.model && r.model.visible && r.role === p.role;
+      const previous = r.model;
       r.role = p.role;
-      r.model = buildAvatar(p.role, p.nid, p.name, true);
-      r.model.visible = false;           // shown once we have a transform for it
+      r.skin = skin;
+      r.model = buildAvatar(p.role, p.nid, p.name, true, skin);
+      if (wasVisible) {                  // same player, new look: swap in place
+        r.model.position.copy(previous.position);
+        r.model.rotation.y = previous.rotation.y;
+      } else {
+        r.model.visible = false;         // shown once we have a transform for it
+      }
+      destroyAvatar(previous);
     }
     r.status = p.status;
   });
@@ -161,6 +177,7 @@ net.onState = (state) => {
   match.leverHolder = state.leverHolder;
   if (state.phase !== match.phase) {
     match.phase = state.phase;
+    if (state.phase === PHASE_PLAYING) { goldEarned = null; shop.close(); }   // new round: shop shuts, reward resets
     if (state.phase === PHASE_ENDED) {
       if (me) audio.play((state.winner === TEAM_TOYS) === (me.role === ROLE_TOY) ? "victory" : "defeat");
       if (document.pointerLockElement) document.exitPointerLock();   // free the mouse for the banner
@@ -169,7 +186,7 @@ net.onState = (state) => {
     }
   }
   // Re-rendered on every patch while ended so late-arriving stats are included.
-  if (state.phase === PHASE_ENDED && me) endBanner.show(state, me);
+  if (state.phase === PHASE_ENDED && me) endBanner.show(state, me, goldEarned);
 
   // Chaos Mode: announce the vote opening and the winning event.
   if (state.chaos.phase !== chaosPhase) {
@@ -210,6 +227,20 @@ net.onEvent = (ev) => {
   }
 };
 
+// Private profile updates: gold, unlocks, lifetime stats (and shop errors).
+net.onProfile = (message) => {
+  shop.setProfile(message);
+  if (message.error) return;
+  ui.hudGold.textContent = message.guest ? "—" : message.gold;
+  if (message.notice) audio.play("deposit");            // purchase ka-ching
+  if (typeof message.earned === "number") {             // match payout
+    goldEarned = message.earned;
+    const state = net.room && net.room.state;
+    const me = state && state.players.get(net.sessionId);
+    if (me && state.phase === PHASE_ENDED) endBanner.show(state, me, goldEarned);
+  }
+};
+
 // High-frequency transforms arrive as interest-filtered snapshot messages.
 let lastSnapshotEntities = 0;
 net.onSnapshot = (snap) => {
@@ -239,6 +270,8 @@ net.onDisconnect = () => {
   loot.clear();
   chaosFx.clear();
   footsteps.clear();
+  shop.close();
+  goldEarned = null;
   chaosPhase = CHAOS_OFF;
   endBanner.hide();
   targets.update([]);
@@ -352,6 +385,7 @@ const ui = {
   menu: $("menu"), hud: $("hud"), error: $("error"), name: $("name"), code: $("code"),
   create: $("create"), join: $("join"), start: $("start"), hint: $("hint"), debug: $("debug"),
   hudCode: $("hud-code"), hudRole: $("hud-role"), hudPhase: $("hud-phase"), hudCount: $("hud-count"),
+  hudGold: $("hud-gold"), shopOpen: $("shop-open"),
   hudTimer: $("hud-timer"), hudTarget: $("hud-target"), hudJailed: $("hud-jailed"), hudToys: $("hud-toys"),
   status: $("status"), lever: $("lever"), leverFill: $("lever-fill"), again: $("again"),
   roster: $("roster"), hudScore: $("hud-score"), carry: $("carry"), prompt: $("prompt"), toasts: $("toasts"),
@@ -386,10 +420,21 @@ ui.code.addEventListener("input", () => { ui.code.value = ui.code.value.replace(
 ui.start.addEventListener("click", () => net.requestStart());
 ui.again.addEventListener("click", () => net.requestStart());
 canvas.addEventListener("click", () => audio.unlock());
+
+// Safehouse / shop: available between matches (lobby and end screen), B or the HUD button.
+let goldEarned = null;   // gold banked from the match that just ended (shown on the end banner)
+const shop = new ShopUI($("shop"), {
+  send: (action, skinId) => net.sendShop(action, skinId),
+  onToggle: (open) => { if (open && document.pointerLockElement) document.exitPointerLock(); },
+});
+const shopAllowed = () => !!net.room && match.phase !== PHASE_PLAYING;
+ui.shopOpen.addEventListener("click", () => { if (shopAllowed()) shop.toggle(); });
 addEventListener("keydown", (e) => {
   if (e.repeat || !net.room || e.target instanceof HTMLInputElement) return;
   if (e.code === "KeyM") toast(audio.toggleMute() ? "Sound muted" : "Sound on");
   if (e.code === "KeyO") streamer.toggle();
+  if (e.code === "KeyB" && (shop.isOpen || shopAllowed())) shop.toggle();
+  if (e.code === "Escape") shop.close();
 });
 
 function updateHud(state) {
@@ -405,6 +450,7 @@ function updateHud(state) {
   ui.hudRole.textContent = local.role.toUpperCase();
   ui.hudRole.className = `chip ${local.role}`;
   ui.start.hidden = !local.host;
+  ui.shopOpen.hidden = state.phase === PHASE_PLAYING;
   ui.start.textContent = state.phase === PHASE_LOBBY ? "Start match" : "Restart match";
 
   ui.roster.replaceChildren();
@@ -513,4 +559,4 @@ function toast(text, kind = "") {
 }
 
 // Debug handle for the console / automated tests.
-window.__heist = { net, prediction, remotes, local, input, scene, camera, loot, match, audio, lights, chaosFx, getDetected: () => detected };
+window.__heist = { shop, net, prediction, remotes, local, input, scene, camera, loot, match, audio, lights, chaosFx, getDetected: () => detected };

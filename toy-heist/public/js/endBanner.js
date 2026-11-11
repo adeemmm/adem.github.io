@@ -32,7 +32,8 @@ export class EndBanner {
     this.wait = root.querySelector("#end-wait");
   }
 
-  show(state, me) {
+  /** `goldEarned` is the gold this player just banked (null for guests / not yet known). */
+  show(state, me, goldEarned = null) {
     const myTeamWon = (state.winner === TEAM_TOYS) === (me.role === ROLE_TOY);
     this.root.className = `overlay ${myTeamWon ? "victory" : "defeat"}`;
     this.title.textContent = myTeamWon ? "VICTORY" : "DEFEAT";
@@ -61,6 +62,7 @@ export class EndBanner {
       ["Top guard", topGuard ? `${topGuard.name} (${topGuard.arrests} arrests)` : "—"],
       ["Jailbreak hero", topHero ? `${topHero.name} (${topHero.rescues} freed)` : "—"],
       ["You", me.role === ROLE_TOY ? `${me.score} pts · ${me.rescues} freed` : `${me.arrests} arrests`],
+      ["Gold earned", goldEarned === null ? "—" : `+${goldEarned}`],
     ];
     this.stats.replaceChildren();
     for (const [k, v] of rows) {

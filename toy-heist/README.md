@@ -22,6 +22,8 @@ Open two tabs, create a lobby in one and join with the 4-digit code in the other
 | `server/rooms/schema/HeistState.js` | Low-frequency replicated state (roster, roles, phase) |
 | `server/sim/LootSystem.js` | Loot spawning, grab/drop, extraction deposits |
 | `server/sim/JailSystem.js` | Arrests, Toy Jail confinement, jailbreak lever |
+| `server/db/database.js` | SQLite persistence: gold, lifetime stats, unlocked and equipped skins |
+| `server/sim/Progression.js` | Profiles, shop validation, match-end gold payouts |
 | `server/sim/TwitchChaos.js` | Twitch IRC client and the Chaos Mode vote/event cycle |
 | `server/sim/VisionSystem.js` | Guard flashlight cone + line-of-sight detection |
 | `server/config.js` | Env overrides for match length and score target |
@@ -36,6 +38,8 @@ Open two tabs, create a lobby in one and join with the 4-digit code in the other
 | `public/js/audio.js` | Procedural WebAudio sound effects, spatial playback, footsteps |
 | `public/js/streamerUI.js` | Big join code and live chaos vote bars for stream viewers |
 | `public/js/chaos.js` | Lights Out and Banana Rain visuals |
+| `public/js/shop.js` | Safehouse modal: gold, stats, buy and equip skins |
+| `public/js/shared/cosmetics.js` | Skin catalogue, prices and reward rules (server and client) |
 
 ## Netcode
 
@@ -101,7 +105,24 @@ HEIST_CHAOS=1 npm start                # Chaos Mode without Twitch (random event
 Timings can be overridden with `HEIST_CHAOS_CALM_SECONDS`, `HEIST_CHAOS_VOTE_SECONDS` and
 `HEIST_CHAOS_EVENT_SECONDS`; `TWITCH_IRC_URL` points the client at a different IRC endpoint.
 
+## Persistence and cosmetics (Phase 5)
+
+- **Database.** `toy_heist.db` (SQLite via `better-sqlite3`) is created next to `package.json` on first
+  start; set `HEIST_DB_PATH` to move it. The `players` table holds `username` (primary key,
+  case-insensitive), `gold`, `total_deposits`, `total_arrests`, `unlocked_skins` (JSON),
+  `equipped_skin` (toy look) and `equipped_guard_skin` (guard look).
+- **Accounts.** The name typed on the main menu is the account. Leaving it blank plays as a guest,
+  who earns nothing. **There is no login**: anyone who types a name gets that name's gold and skins.
+- **Rewards.** When a match ends every connected, named player is paid in one transaction:
+  25 gold for finishing, +50 for winning, toys +1 per point they extracted and +15 per team-mate
+  freed, guards +40 per arrest. Lobby free play pays nothing.
+- **Safehouse.** Press **B** or the HUD button between matches (lobby or end screen) to see your gold
+  and lifetime stats and to buy or equip skins: Default Capsule, Party Hat Toy (75), Robot Toy (250),
+  Royal Toy (600), Night Guard, Gold Guard (400). Purchases are validated on the server.
+- **Sync.** Equipped skin ids are part of each player's replicated state, so everyone sees the
+  matching model. Gold, unlocks and stats are sent only to their owner.
+
 ## Not yet built
 
-SQLite persistence, reconnection, and a rigid-body
-physics engine (movement currently uses a deterministic kinematic controller against AABBs).
+Accounts with real authentication, reconnection, and a rigid-body physics engine (movement uses a
+deterministic kinematic controller against AABBs).

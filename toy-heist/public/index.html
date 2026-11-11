@@ -38,6 +38,8 @@
       <span class="chip"><b id="hud-count">0</b>/32</span>
       <span class="chip">TEAM SCORE <b id="hud-score">0</b>/<span id="hud-target">500</span></span>
       <span class="chip">JAILED <b id="hud-jailed">0</b>/<span id="hud-toys">0</span></span>
+      <span class="chip" id="hud-gold-chip">GOLD <b id="hud-gold">0</b></span>
+      <button id="shop-open">Safehouse (B)</button>
       <button id="start" hidden>Start match</button>
     </div>
     <ul id="roster"></ul>
@@ -49,9 +51,12 @@
     <div id="carry" hidden></div>
     <div id="prompt" hidden></div>
     <div id="toasts"></div>
-    <div id="hint">Click to capture mouse &middot; WASD move &middot; Mouse look &middot; Space jump &middot; E grab/drop/lever &middot; F or click arrest &middot; M mute &middot; O stream overlay &middot; Wheel zoom &middot; Esc release</div>
+    <div id="hint">Click to capture mouse &middot; WASD move &middot; Mouse look &middot; Space jump &middot; E grab/drop/lever &middot; F or click arrest &middot; B safehouse &middot; M mute &middot; O stream overlay &middot; Wheel zoom &middot; Esc release</div>
     <div id="crosshair"></div>
   </div>
+
+  <!-- Safehouse / cosmetics shop (built by js/shop.js) -->
+  <div id="shop" class="overlay" hidden></div>
 
   <!-- End-of-match banner -->
   <div id="end" class="overlay" hidden>

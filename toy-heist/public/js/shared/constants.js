@@ -54,6 +54,8 @@ export const MSG_INPUT = "i";       // client -> server: one input per sim tick
 export const MSG_SNAPSHOT = "s";    // server -> client: interest-filtered world snapshot
 export const MSG_START = "start";   // client (host) -> server: begin the match
 export const MSG_EVENT = "ev";      // server -> clients: one-shot gameplay events (deposits)
+export const MSG_SHOP = "shop";     // client -> server: { a: "buy" | "equip", id: skinId }
+export const MSG_PROFILE = "pf";    // server -> one client: their private profile (gold, unlocks, stats)
 
 // Interest management.
 export const AOI_CELL_SIZE = 16;    // spatial hash cell size (metres)
