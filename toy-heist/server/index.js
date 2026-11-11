@@ -28,6 +28,7 @@ const app = express();
 if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 app.use(express.static(path.join(ROOT, "public")));
 app.use("/vendor/three", express.static(path.join(ROOT, "node_modules/three/build")));
+app.use("/vendor/three-addons", express.static(path.join(ROOT, "node_modules/three/examples/jsm")));
 app.use("/vendor/colyseus", express.static(path.join(ROOT, "node_modules/colyseus.js/dist")));
 
 app.get("/api/health", async (_req, res) => {

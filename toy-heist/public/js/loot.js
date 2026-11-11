@@ -5,8 +5,19 @@
 import * as THREE from "three";
 import { ROLE_STATS, ROLE_TOY } from "./shared/constants.js";
 
-const flat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.6, flatShading: true, ...extra });
-const BLOCK_COLORS = [0xef476f, 0x06d6a0, 0x4cc9f0, 0xf78c6b, 0x9b5de5];
+const flat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.05, flatShading: true, ...extra });
+const BLOCK_COLORS = [0xff3b5c, 0x16db93, 0x18d6ff, 0xff7a2f, 0xa259ff];
+
+// Pulsing halo on the floor under every free item, tinted by how valuable it is.
+// Geometry and materials are shared; the colours are brighter than white so they bloom.
+const HALO_GEOMETRY = new THREE.RingGeometry(0.55, 0.72, 28).rotateX(-Math.PI / 2);
+const haloMaterial = (color) => {
+  const m = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending });
+  m.color.set(color).multiplyScalar(1.8);
+  return m;
+};
+const HALO_MATERIALS = { block: haloMaterial(0x7fd4ff), coin: haloMaterial(0xffc531), teddy: haloMaterial(0xff5fb7) };
+const POP_SECONDS = 0.35;   // spawn / drop "pop-in" duration
 
 function shadowed(mesh) { mesh.castShadow = true; return mesh; }
 
@@ -76,6 +87,7 @@ export class LootView {
     // Called when an item changes hands: ("pickup", item) or ("drop", item).
     // Not fired for the initial sync or for respawns.
     this.onChange = () => {};
+    this.lastTime = 0;
   }
 
   /** Mirror the replicated loot map. Cheap enough to call on every state patch. */
@@ -84,7 +96,9 @@ export class LootView {
       let item = this.items.get(id);
       const isNew = !item;
       if (isNew) {
-        item = { id, type: null, model: null, x: 0, y: 0, z: 0, carrier: l.carrier, phase: Number(id) * 1.7 };
+        item = { id, type: null, model: null, halo: null, x: 0, y: 0, z: 0, carrier: l.carrier, phase: Number(id) * 1.7, pop: 0 };
+        item.halo = new THREE.Mesh(HALO_GEOMETRY, HALO_MATERIALS.block);
+        this.scene.add(item.halo);
         this.items.set(id, item);
       }
       const previousCarrier = item.carrier;
@@ -92,20 +106,23 @@ export class LootView {
         if (item.model) { this.scene.remove(item.model); dispose(item.model); }
         item.type = l.type;
         item.model = createLootModel(l.type, Number(id));
+        item.halo.material = HALO_MATERIALS[l.type] || HALO_MATERIALS.block;
+        item.pop = 0;                   // pop in at the new spot
         this.scene.add(item.model);
       }
       item.x = l.x; item.y = l.y; item.z = l.z; item.carrier = l.carrier;
+      if (previousCarrier !== 0 && l.carrier === 0) item.pop = 0;   // just dropped: pop back onto the floor
       if (!isNew && previousCarrier !== l.carrier) this.onChange(l.carrier !== 0 ? "pickup" : "drop", item, previousCarrier);
     });
     for (const [id, item] of this.items) {
       if (lootState.has(id)) continue;
-      this.scene.remove(item.model); dispose(item.model);
+      this.scene.remove(item.model, item.halo); dispose(item.model);
       this.items.delete(id);
     }
   }
 
   clear() {
-    for (const item of this.items.values()) { this.scene.remove(item.model); dispose(item.model); }
+    for (const item of this.items.values()) { this.scene.remove(item.model, item.halo); dispose(item.model); }
     this.items.clear();
   }
 
@@ -114,16 +131,28 @@ export class LootView {
    * with that network id (or null if we are not currently drawing them).
    */
   update(time, avatarOf) {
+    const dt = Math.min(0.1, Math.max(0, (time - this.lastTime) * 0.001));
+    this.lastTime = time;
     for (const item of this.items.values()) {
       const m = item.model;
       const t = time * 0.001 + item.phase;
+      item.halo.visible = item.carrier === 0;
       if (item.carrier === 0) {
+        // Idle: float on a slow bob with a gentle wobble while spinning, and
+        // overshoot slightly when popping in so new loot catches the eye.
+        item.pop = Math.min(1, item.pop + dt / POP_SECONDS);
+        const k = item.pop;
+        const pop = k < 1 ? 1 + 0.35 * Math.sin(k * Math.PI) - (1 - k) * (1 - k) : 1;
         m.visible = true;
-        m.scale.setScalar(1);
-        m.position.set(item.x, item.y + 0.12 + Math.sin(t * 2.2) * 0.08, item.z);
-        m.rotation.y = t * 0.9;
+        m.scale.setScalar(Math.max(0.01, pop));
+        m.position.set(item.x, item.y + 0.3 + Math.sin(t * 2.2) * 0.12, item.z);
+        m.rotation.set(Math.sin(t * 1.3) * 0.08, t * 0.9, Math.cos(t * 1.1) * 0.08);
+        const pulse = 1 + Math.sin(t * 3) * 0.12;
+        item.halo.position.set(item.x, item.y + 0.04, item.z);
+        item.halo.scale.set(pulse, 1, pulse);
         continue;
       }
+      m.rotation.x = m.rotation.z = 0;
       const avatar = avatarOf(item.carrier);
       m.visible = !!avatar && avatar.visible;
       if (!m.visible) continue;

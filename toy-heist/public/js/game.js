@@ -22,6 +22,9 @@ import { resolveSkin } from "./shared/cosmetics.js";
 import { extractionZoneAt } from "./shared/map.js";
 import { LootView } from "./loot.js";
 import { buildWorld } from "./world.js";
+import { buildProps } from "./props.js";
+import { PostFX } from "./postfx.js";
+import { AvatarJuice, Particles } from "./juice.js";
 import { createPlayerModel, createNameTag, disposeModel } from "./models.js";
 import { Input } from "./input.js";
 import { ChaseCamera } from "./camera.js";
@@ -35,19 +38,31 @@ const canvas = document.getElementById("game");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;       // soft-edged shadows
+renderer.toneMapping = THREE.ACESFilmicToneMapping;    // filmic roll-off keeps saturated colours from clipping
+renderer.toneMappingExposure = 1.05;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(65, 1, 0.1, 300);
 camera.position.set(0, 14, 52);
 camera.lookAt(0, 0, 0);
 
-const { solids, lights } = buildWorld(scene);
+const { solids, lights } = buildWorld(scene, renderer);
+const props = buildProps(scene);                          // playroom megastructures + chute effects
+const postfx = new PostFX(renderer, scene, camera);       // bloom + colour grade (adaptive)
+const particles = new Particles(scene);
+const avatarJuice = new AvatarJuice({
+  // Any player touching down kicks up a dust puff sized by how hard they landed.
+  onLand: (model, impact) => particles.burst(model.position, {
+    count: 5 + Math.round(impact * 9), color: 0xb9c4ff, spread: 1.4 + impact * 1.6, lift: 0.8 + impact, life: 0.45,
+  }),
+});
 const input = new Input(canvas);
 const chase = new ChaseCamera(camera, solids);
 
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
+  postfx.setSize(innerWidth, innerHeight, renderer.getPixelRatio());
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
 }
@@ -75,7 +90,10 @@ let detectedCount = 0;        // guard: how many toys were lit last frame
 loot.onChange = (kind, item, previousCarrier) => {
   if (kind === "pickup") {
     const avatar = avatarOf(item.carrier);
-    if (avatar) audio.play("pickup", avatar.position);
+    if (avatar) {
+      audio.play("pickup", avatar.position);
+      particles.burst(avatar.position, { count: 14, color: 0xffe14d, spread: 1.6, lift: 3.5, life: 0.6, brightness: 2.5 });
+    }
   } else {
     // Deposits respawn the item elsewhere, so the thud belongs where the carrier stands.
     const avatar = avatarOf(previousCarrier);
@@ -132,6 +150,8 @@ net.onState = (state) => {
         destroyAvatar(local.model);
         local.model = buildAvatar(p.role, p.nid, p.name, false, skin);
         local.skin = skin;
+        // Only our own flashlight casts shadows: one extra shadow map instead of eight.
+        if (local.model.userData.flashlight) local.model.userData.flashlight.castShadow = true;
         local.model.visible = prediction.ready;
       }
       local.role = p.role; local.nid = p.nid; local.name = p.name; local.host = p.host;
@@ -213,14 +233,19 @@ const nameOf = (nid, fallback) => nid === local.nid ? "You" : (remotesByNid.get(
 
 net.onEvent = (ev) => {
   const at = (nid) => { const avatar = avatarOf(nid); return avatar ? avatar.position : null; };
+  const sparkle = (pos, color, count = 22) => { if (pos) particles.burst(pos, { count, color, spread: 2.6, lift: 4, life: 0.8, brightness: 2.5 }); };
   if (ev.k === "deposit") {
     audio.play("deposit", at(ev.n));
+    sparkle(at(ev.n), 0x19ff9c, 30);
+    if (ev.n === local.nid) chase.shake(0.25);
     toast(`${nameOf(ev.n, "A toy")} extracted ${LOOT_TYPES[ev.t].label}  +${ev.p}`);
   } else if (ev.k === "slip") {
     audio.play("slip", at(ev.n));
     if (ev.n === local.nid) toast("You slipped on a banana and dropped your loot!", "arrest");
   } else if (ev.k === "arrest") {
     audio.play("arrest", at(ev.g));
+    sparkle(at(ev.g), 0xff3b5c);
+    if (ev.n === local.nid || ev.g === local.nid) chase.shake(0.6);
     toast(`${nameOf(ev.g, "A guard")} arrested ${nameOf(ev.n, "a toy").replace(/^You$/, "you")}`, "arrest");
   } else if (ev.k === "jailbreak") {
     audio.play("siren", { x: JAIL.x, y: 2, z: JAIL.z });   // alarm blares from the jail itself
@@ -289,6 +314,8 @@ net.onDisconnect = () => {
 // -------------------------------------------------------------------- loop --
 
 const tmp = { x: 0, y: 0, z: 0, yaw: 0 };
+const chaseFeel = { strafe: 0, speed: 1 };
+let lastCmd = null;   // most recent input sample, for camera tilt
 const targetPoints = [];
 let last = performance.now();
 let accumulator = 0;
@@ -311,7 +338,12 @@ function frame(now) {
         cmd.j = cmd.e = cmd.h = cmd.a = false;
       }
       net.sendInput(cmd);
+      const wasGrounded = prediction.body.grounded, fallSpeed = -prediction.body.vy;
       prediction.apply(cmd, local.role);
+      // Camera feedback on take-off and touchdown (the prediction itself is untouched).
+      if (wasGrounded && !prediction.body.grounded && prediction.body.vy > 0) chase.jump();
+      else if (!wasGrounded && prediction.body.grounded && fallSpeed > 3) chase.land(Math.min(1, fallSpeed / 16));
+      lastCmd = cmd;
     }
 
     // Local player: interpolate between the last two predicted ticks.
@@ -334,6 +366,14 @@ function frame(now) {
     }
     if (local.model) footsteps.track(local.nid, local.pos, local.role === ROLE_GUARD);
 
+    // Squash, stretch and lean for everyone we are drawing.
+    if (local.model) avatarJuice.update(local.model, dt, ROLE_STATS[local.role].speed);
+    for (const r of remotes.values()) {
+      if (r.model && r.model.visible) avatarJuice.update(r.model, dt, ROLE_STATS[r.role].speed);
+    }
+    particles.update(dt);
+    props.update(now);
+
     // Detection beeps: a toy hears a warning while lit; a guard hears each new catch.
     if (local.role === ROLE_TOY && spotted && now >= spottedBeepAt && match.phase !== PHASE_ENDED) {
       audio.play("beep");
@@ -347,7 +387,9 @@ function frame(now) {
     chaosFx.update(dt);
     updateInteractionHud();
 
-    chase.update(local.pos, ROLE_STATS[local.role].height * 0.9, input.yaw, input.pitch, input.zoom, dt);
+    chaseFeel.strafe = lastCmd ? lastCmd.r : 0;
+    chaseFeel.speed = Math.hypot(prediction.body.vx, prediction.body.vz) / ROLE_STATS[local.role].speed;
+    chase.update(local.pos, ROLE_STATS[local.role].height * 0.9, input.yaw, input.pitch, input.zoom, dt, chaseFeel);
     // Guard HUD: reticles over toys caught in the flashlight (after the camera has moved).
     targetPoints.length = 0;
     if (local.role === ROLE_GUARD && match.phase !== PHASE_ENDED) {
@@ -367,7 +409,8 @@ function frame(now) {
       `${fps.toFixed(0)} fps\n` +
       `unacked inputs ${prediction.pending.length}\n` +
       `entities in snapshot ${lastSnapshotEntities}/${remotes.size}\n` +
-      `correction ${(prediction.lastCorrection * 100).toFixed(1)} cm`;
+      `correction ${(prediction.lastCorrection * 100).toFixed(1)} cm\n` +
+      `effects ${postfx.enabled ? "on" : "off"}`;
   } else {
     // Menu backdrop: slow orbit around the vault.
     const a = now * 0.00008;
@@ -375,7 +418,8 @@ function frame(now) {
     camera.lookAt(0, 1, 0);
   }
 
-  renderer.render(scene, camera);
+  if (!(net.room && prediction.ready)) props.update(now);   // keep the chutes alive behind the menu
+  postfx.render(dt, fps);
 }
 requestAnimationFrame(frame);
 
@@ -433,6 +477,7 @@ addEventListener("keydown", (e) => {
   if (e.repeat || !net.room || e.target instanceof HTMLInputElement) return;
   if (e.code === "KeyM") toast(audio.toggleMute() ? "Sound muted" : "Sound on");
   if (e.code === "KeyO") streamer.toggle();
+  if (e.code === "KeyP") toast(postfx.toggle() ? "Visual effects on" : "Visual effects off");
   if (e.code === "KeyB" && (shop.isOpen || shopAllowed())) shop.toggle();
   if (e.code === "Escape") shop.close();
 });
@@ -559,4 +604,4 @@ function toast(text, kind = "") {
 }
 
 // Debug handle for the console / automated tests.
-window.__heist = { shop, net, prediction, remotes, local, input, scene, camera, loot, match, audio, lights, chaosFx, getDetected: () => detected };
+window.__heist = { postfx, particles, chase, shop, net, prediction, remotes, local, input, scene, camera, loot, match, audio, lights, chaosFx, getDetected: () => detected };

@@ -33,7 +33,10 @@ Open two tabs (use **Play as Guest** for quick tests), create a lobby in one and
 | `public/js/shared/` | Code run by **both** server and client: constants, map, movement |
 | `public/js/net/` | `NetClient` (socket), `Prediction` (local player), `Interpolation` (remotes) |
 | `public/js/game.js` | Client entry: scene, entities, fixed-step loop, HUD |
-| `public/js/{world,models,camera,input}.js` | Environment, placeholder meshes, chase camera, controls |
+| `public/js/{world,models,camera,input}.js` | Arena and lighting, character meshes, chase camera, controls |
+| `public/js/props.js` | Decorative playroom megastructures and extraction chute effects |
+| `public/js/postfx.js` | Bloom, colour grade and adaptive quality |
+| `public/js/juice.js` | Squash-and-stretch, lean, and the particle system |
 | `public/js/loot.js` | Loot meshes and the view that mirrors replicated loot state |
 | `public/js/jail.js` | Jail cell, lever and guard target-marker rendering |
 | `public/js/endBanner.js` | Victory/Defeat overlay with match stats |
@@ -133,6 +136,22 @@ Timings can be overridden with `HEIST_CHAOS_CALM_SECONDS`, `HEIST_CHAOS_VOTE_SEC
   Royal Toy (600), Night Guard, Gold Guard (400). Purchases are validated on the server.
 - **Sync.** Equipped skin ids are part of each player's replicated state, so everyone sees the
   matching model. Gold, unlocks and stats are sent only to their owner.
+
+## Visual polish
+
+- **Lighting.** Moonlight (directional, 2048 px soft shadow map) over a hemisphere fill and a faint
+  image-based environment, with ACES tone mapping. Guard flashlights use a shader beam that fades
+  toward its edges and along its length; only your own flashlight casts shadows.
+- **Materials.** Saturated toy-box palette on glossy plastic `MeshStandardMaterial`s. Arena blocks are
+  rounded and studded like building bricks; the floor is a checkered playmat.
+- **Post-processing.** Bloom plus a light colour grade and vignette. It switches itself off if the
+  frame rate stays under 40 fps for four seconds; **P** toggles it by hand.
+- **Juice.** Loot bobs, wobbles and pops in over a pulsing halo. Players squash on landing, stretch in
+  the air and lean into a run. The camera dips and shakes on landing, tilts into strafes and widens
+  at boost speeds. Dust puffs and sparkles mark landings, pickups, deposits and arrests.
+- **Playroom.** Giant alphabet blocks, a ring stacker, a beach ball, crayons and a moonlit window stand
+  outside the walls (decoration only). Extraction chutes are glowing green tubes with streaming
+  chevrons. Six low barrier walls were added to the shared map, so they collide on server and client.
 
 ## Deployment (Docker)
 

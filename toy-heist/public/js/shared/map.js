@@ -18,39 +18,55 @@ function box(x, y, z, w, h, d, color, kind = "block") {
 // A box resting on the floor.
 const onFloor = (x, z, w, h, d, color, kind) => box(x, h / 2, z, w, h, d, color, kind);
 
+// Saturated "toy box" palette. Colours are only read by the client renderer.
+const C = {
+  wall: 0x7b6cf6, vault: 0xffc531, step: 0xff9f1c,
+  red: 0xff3b5c, green: 0x16db93, blue: 0x2d9bf0, purple: 0xa259ff, pink: 0xff5fb7,
+  cyan: 0x18d6ff, yellow: 0xffe14d, mint: 0x2ff3c7, orange: 0xff7a2f, sand: 0xffc86b,
+};
+
 export const OBSTACLES = [
   // Perimeter walls
-  onFloor(0, -HALF - WALL_T / 2, ARENA_SIZE + WALL_T * 2, WALL_H, WALL_T, 0x8d99ae, "wall"),
-  onFloor(0,  HALF + WALL_T / 2, ARENA_SIZE + WALL_T * 2, WALL_H, WALL_T, 0x8d99ae, "wall"),
-  onFloor(-HALF - WALL_T / 2, 0, WALL_T, WALL_H, ARENA_SIZE, 0x8d99ae, "wall"),
-  onFloor( HALF + WALL_T / 2, 0, WALL_T, WALL_H, ARENA_SIZE, 0x8d99ae, "wall"),
+  onFloor(0, -HALF - WALL_T / 2, ARENA_SIZE + WALL_T * 2, WALL_H, WALL_T, C.wall, "wall"),
+  onFloor(0,  HALF + WALL_T / 2, ARENA_SIZE + WALL_T * 2, WALL_H, WALL_T, C.wall, "wall"),
+  onFloor(-HALF - WALL_T / 2, 0, WALL_T, WALL_H, ARENA_SIZE, C.wall, "wall"),
+  onFloor( HALF + WALL_T / 2, 0, WALL_T, WALL_H, ARENA_SIZE, C.wall, "wall"),
 
   // Central vault: the heist target, with a stepped approach
-  onFloor(0, 0, 8, 3, 8, 0xffd166, "vault"),
-  onFloor(6, 0, 4, 1.5, 4, 0xf4a261),
-  onFloor(0, 6, 4, 1.5, 4, 0xf4a261),
+  onFloor(0, 0, 8, 3, 8, C.vault, "vault"),
+  onFloor(6, 0, 4, 1.5, 4, C.step),
+  onFloor(0, 6, 4, 1.5, 4, C.step),
 
   // Giant toy blocks (jumpable staircases for toys, cover from flashlights)
-  onFloor(-14, -10, 4, 1.2, 4, 0xef476f),
-  onFloor(-18, -10, 4, 2.4, 4, 0xef476f),
-  onFloor(-18, -14, 4, 3.6, 4, 0xef476f),
-  onFloor(14, 12, 6, 2, 3, 0x06d6a0),
-  onFloor(20, 12, 3, 4, 3, 0x06d6a0),
-  onFloor(16, -18, 3, 3, 10, 0x118ab2),
-  onFloor(24, -22, 5, 1.5, 5, 0x118ab2),
-  onFloor(-12, 18, 10, 2.5, 3, 0x9b5de5),
-  onFloor(-24, 22, 4, 4, 4, 0x9b5de5),
-  onFloor(-28, 0, 3, 5, 12, 0xf15bb5),
-  onFloor(28, 2, 3, 5, 12, 0x00bbf9),
-  onFloor(0, -26, 14, 2, 3, 0xfee440),
-  onFloor(0, 28, 14, 2, 3, 0x00f5d4),
-  onFloor(-30, -28, 6, 1, 6, 0xf4a261),
-  onFloor(30, 28, 6, 1, 6, 0xf4a261),
-  onFloor(8, -8, 2, 1, 2, 0xef476f),
-  onFloor(-8, 8, 2, 1, 2, 0x06d6a0),
+  onFloor(-14, -10, 4, 1.2, 4, C.red),
+  onFloor(-18, -10, 4, 2.4, 4, C.red),
+  onFloor(-18, -14, 4, 3.6, 4, C.red),
+  onFloor(14, 12, 6, 2, 3, C.green),
+  onFloor(20, 12, 3, 4, 3, C.green),
+  onFloor(16, -18, 3, 3, 10, C.blue),
+  onFloor(24, -22, 5, 1.5, 5, C.blue),
+  onFloor(-12, 18, 10, 2.5, 3, C.purple),
+  onFloor(-24, 22, 4, 4, 4, C.purple),
+  onFloor(-28, 0, 3, 5, 12, C.pink),
+  onFloor(28, 2, 3, 5, 12, C.cyan),
+  onFloor(0, -26, 14, 2, 3, C.yellow),
+  onFloor(0, 28, 14, 2, 3, C.mint),
+  onFloor(-30, -28, 6, 1, 6, C.orange),
+  onFloor(30, 28, 6, 1, 6, C.orange),
+  onFloor(8, -8, 2, 1, 2, C.red),
+  onFloor(-8, 8, 2, 1, 2, C.green),
 
   // Floating shelf, reachable from the red staircase
-  box(-23, 4.2, -14, 5, 0.6, 4, 0xe9c46a),
+  box(-23, 4.2, -14, 5, 0.6, 4, C.sand),
+
+  // Low barrier walls: hop-over cover that breaks up the open floor.
+  // (Both toys and guards can clear 0.9 m with a jump.)
+  onFloor(-20, 10, 8, 0.9, 0.8, C.yellow, "barrier"),
+  onFloor(20, -6, 0.8, 0.9, 8, C.pink, "barrier"),
+  onFloor(-6, -17, 8, 0.9, 0.8, C.cyan, "barrier"),
+  onFloor(8, 20, 0.8, 0.9, 6, C.orange, "barrier"),
+  onFloor(-34, 14, 6, 0.9, 0.8, C.mint, "barrier"),
+  onFloor(34, 16, 6, 0.9, 0.8, C.purple, "barrier"),
 ];
 
 // Extraction chutes: toys carrying loot score by stepping into one of these circles.

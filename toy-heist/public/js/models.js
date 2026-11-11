@@ -5,19 +5,62 @@ import * as THREE from "three";
 import { ROLE_STATS, ROLE_GUARD, ROLE_TOY, VISION_RANGE, VISION_HALF_ANGLE } from "./shared/constants.js";
 import { DEFAULT_TOY_SKIN, DEFAULT_GUARD_SKIN } from "./shared/cosmetics.js";
 
-const TOY_COLORS = [0xef476f, 0xffd166, 0x06d6a0, 0x4cc9f0, 0xf78c6b, 0xb5179e, 0x90be6d, 0xf9c74f];
-const flat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.7, flatShading: true, ...extra });
+// Saturated toy-box colours; faceted low-poly shading with a glossy plastic finish.
+const TOY_COLORS = [0xff3b5c, 0xffc531, 0x16db93, 0x18d6ff, 0xff7a2f, 0xd13bff, 0x8ee53f, 0xff5fb7];
+const flat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0.05, flatShading: true, ...extra });
+
+// Flashlight beam: a cone that is brightest along its axis, fades towards its
+// silhouette and along its length, so it reads as light scattering in dusty
+// air instead of a flat transparent shape. Shared by every guard.
+const BEAM_MATERIAL = new THREE.ShaderMaterial({
+  uniforms: { color: { value: new THREE.Color(0xfff0a8) }, strength: { value: 0.55 } },
+  vertexShader: /* glsl */`
+    uniform float beamLength;
+    varying vec3 vNormal;
+    varying vec3 vView;
+    varying float vAlong;
+    void main() {
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vNormal = normalize(normalMatrix * normal);
+      vView = normalize(-mv.xyz);
+      vAlong = clamp(-position.z / beamLength, 0.0, 1.0);   // 0 at the lens, 1 at the far end
+      gl_Position = projectionMatrix * mv;
+    }
+  `,
+  fragmentShader: /* glsl */`
+    uniform vec3 color;
+    uniform float strength;
+    varying vec3 vNormal;
+    varying vec3 vView;
+    varying float vAlong;
+    void main() {
+      float facing = abs(dot(normalize(vNormal), normalize(vView)));   // 1 looking through the middle, 0 at the edge
+      float core = pow(facing, 2.2);
+      float falloff = pow(1.0 - vAlong, 1.6) * smoothstep(0.0, 0.04, vAlong);
+      gl_FragColor = vec4(color * strength * core * falloff, 1.0);
+    }
+  `,
+  transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+});
+BEAM_MATERIAL.uniforms.beamLength = { value: VISION_RANGE };
+BEAM_MATERIAL.userData.shared = true;   // never disposed with an individual model
 
 function shadowed(mesh) { mesh.castShadow = true; return mesh; }
 
 // ------------------------------------------------------------- toy skins --
+
+const GLINT_GEO = new THREE.SphereGeometry(0.028, 5, 4);
+const GLINT_MAT = new THREE.MeshBasicMaterial({ color: 0xffffff });
+GLINT_MAT.userData.shared = true;
 
 function addEyes(g, height, radius, mat) {
   const eyeGeo = new THREE.SphereGeometry(0.09, 6, 4);
   for (const side of [-1, 1]) {
     const eye = new THREE.Mesh(eyeGeo, mat);
     eye.position.set(side * 0.15, height * 0.72, -radius * 0.88);
-    g.add(eye);
+    const glint = new THREE.Mesh(GLINT_GEO, GLINT_MAT);   // tiny highlight: makes the eyes read at a distance
+    glint.position.set(side * 0.15 + 0.03, height * 0.72 + 0.035, -radius * 0.88 - 0.075);
+    g.add(eye, glint);
   }
 }
 
@@ -161,22 +204,26 @@ export function createGuardModel(skin = DEFAULT_GUARD_SKIN) {
 
   const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.45, 6), flat(0x333333));
   barrel.rotation.x = Math.PI / 2;
-  torch.add(barrel);
+  // A hot lens disc: bright enough to bloom, so you can spot a guard's torch across the room.
+  const lens = new THREE.Mesh(new THREE.CircleGeometry(0.1, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xfff0a8).multiplyScalar(4) }));
+  lens.position.z = -0.24;
+  lens.rotation.y = Math.PI;
+  torch.add(barrel, lens);
 
   // The visible beam matches the server's detection cone (VisionSystem.js).
   const CONE_LEN = VISION_RANGE, CONE_ANGLE = VISION_HALF_ANGLE;
   const coneGeo = new THREE.ConeGeometry(Math.tan(CONE_ANGLE) * CONE_LEN, CONE_LEN, 16, 1, true);
   coneGeo.translate(0, -CONE_LEN / 2, 0);   // apex at origin
   coneGeo.rotateX(Math.PI / 2);             // open towards -Z
-  const cone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({
-    color: 0xfff3b0, transparent: true, opacity: 0.13, side: THREE.DoubleSide,
-    depthWrite: false, blending: THREE.AdditiveBlending,
-  }));
+  const cone = new THREE.Mesh(coneGeo, BEAM_MATERIAL);
   cone.position.z = -0.25;
   cone.userData.beam = true;   // lets previews hide the beam
   torch.add(cone);
 
-  const light = new THREE.SpotLight(0xfff3b0, 400, CONE_LEN * 1.6, CONE_ANGLE, 0.35, 1.6);
+  const light = new THREE.SpotLight(0xfff0a8, 420, CONE_LEN * 1.6, CONE_ANGLE, 0.45, 1.5);
+  light.shadow.mapSize.set(512, 512);   // only used if the owner enables castShadow (local guard)
+  light.shadow.bias = -0.002;
+  g.userData.flashlight = light;
   light.position.z = -0.25;
   light.target.position.set(0, 0, -CONE_LEN);
   torch.add(light, light.target);
@@ -211,7 +258,7 @@ export function createNameTag(text, role) {
 
 export function disposeModel(root) {
   root.traverse((o) => {
-    if (o.geometry) o.geometry.dispose();
-    if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
+    if (o.geometry && o.geometry !== GLINT_GEO) o.geometry.dispose();
+    if (o.material && !o.material.userData.shared) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
   });
 }

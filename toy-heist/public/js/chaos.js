@@ -38,6 +38,7 @@ export class ChaosEffects {
     this.base = {
       hemi: lights.hemi.intensity,
       moon: lights.moon.intensity,
+      environment: scene.environmentIntensity,   // image-based fill light must go dark too
       background: scene.background.clone(),
       fog: scene.fog.color.clone(),
     };
@@ -84,6 +85,7 @@ export class ChaosEffects {
       const level = 1 - this.darkness * (1 - DARK_LEVEL);
       this.lights.hemi.intensity = this.base.hemi * level;
       this.lights.moon.intensity = this.base.moon * level;
+      this.scene.environmentIntensity = this.base.environment * level;
       this.scene.background.copy(this.base.background).lerp(DARK_COLOR, this.darkness);
       this.scene.fog.color.copy(this.base.fog).lerp(DARK_COLOR, this.darkness);
     }
