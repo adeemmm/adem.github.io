@@ -2,13 +2,17 @@
 import * as THREE from "three";
 import { OBSTACLES, ARENA_SIZE, EXTRACTION_ZONES } from "./shared/map.js";
 
-/** Builds the level into `scene`. Returns the meshes the camera should collide with. */
+/**
+ * Builds the level into `scene`. Returns { solids, lights }: the meshes the camera
+ * should collide with, and the global lights (dimmed by the Lights Out chaos event).
+ */
 export function buildWorld(scene) {
   scene.background = new THREE.Color(0x1b1d3a);
   scene.fog = new THREE.Fog(0x1b1d3a, 60, 150);
 
   // Lighting: dim "after hours" ambience so guard flashlights read clearly.
-  scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x3a2f4a, 1.1));
+  const hemi = new THREE.HemisphereLight(0xbfd4ff, 0x3a2f4a, 1.1);
+  scene.add(hemi);
   const moon = new THREE.DirectionalLight(0xfff1d6, 1.6);
   moon.position.set(30, 50, 20);
   moon.castShadow = true;
@@ -53,7 +57,7 @@ export function buildWorld(scene) {
     solids.push(mesh);
   }
   for (const zone of EXTRACTION_ZONES) scene.add(createExtractionChute(zone));
-  return solids;
+  return { solids, lights: { hemi, moon } };
 }
 
 // Extraction chute marker: a dark "hole", a bright rim and a tall light beam

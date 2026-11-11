@@ -73,16 +73,21 @@ export class LootView {
   constructor(scene) {
     this.scene = scene;
     this.items = new Map();   // loot id -> { id, type, model, x, y, z, carrier, phase }
+    // Called when an item changes hands: ("pickup", item) or ("drop", item).
+    // Not fired for the initial sync or for respawns.
+    this.onChange = () => {};
   }
 
   /** Mirror the replicated loot map. Cheap enough to call on every state patch. */
   sync(lootState) {
     lootState.forEach((l, id) => {
       let item = this.items.get(id);
-      if (!item) {
-        item = { id, type: null, model: null, x: 0, y: 0, z: 0, carrier: 0, phase: Number(id) * 1.7 };
+      const isNew = !item;
+      if (isNew) {
+        item = { id, type: null, model: null, x: 0, y: 0, z: 0, carrier: l.carrier, phase: Number(id) * 1.7 };
         this.items.set(id, item);
       }
+      const previousCarrier = item.carrier;
       if (item.type !== l.type) {       // new item, or respawned as a different type
         if (item.model) { this.scene.remove(item.model); dispose(item.model); }
         item.type = l.type;
@@ -90,6 +95,7 @@ export class LootView {
         this.scene.add(item.model);
       }
       item.x = l.x; item.y = l.y; item.z = l.z; item.carrier = l.carrier;
+      if (!isNew && previousCarrier !== l.carrier) this.onChange(l.carrier !== 0 ? "pickup" : "drop", item, previousCarrier);
     });
     for (const [id, item] of this.items) {
       if (lootState.has(id)) continue;

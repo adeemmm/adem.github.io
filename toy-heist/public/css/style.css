@@ -83,3 +83,28 @@ button:disabled { opacity: .5; cursor: default; }
 #end-stats { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; margin: 8px 0; text-align: left; font-size: 14px; }
 #end-stats dt { opacity: .7; }
 #end-stats dd { margin: 0; font-weight: 700; text-align: right; }
+
+/* Phase 4: streamer overlay */
+#streamer { position: absolute; right: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
+.s-card { padding: 12px 18px; border-radius: 14px; background: rgba(14, 15, 32, .88); border: 2px solid rgba(255, 255, 255, .14);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
+.s-label { font-size: 13px; letter-spacing: 4px; opacity: .75; text-align: center; }
+.s-code-digits { font: 800 72px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: 10px; color: #ffd166;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, .5); text-align: center; padding-left: 10px; }
+.s-sub { font-size: 13px; opacity: .8; text-align: center; margin-top: 2px; }
+.s-chaos { width: 340px; }
+.s-chaos[data-phase="vote"] { border-color: #9146ff; }
+.s-chaos[data-phase="event"] { border-color: #ffd166; }
+.s-title { font-size: 20px; font-weight: 800; letter-spacing: 1px; text-align: center; }
+.s-chaos .s-sub { margin-bottom: 8px; }
+.s-chaos[data-phase="calm"] .s-sub { margin-bottom: 0; }
+.s-bar { position: relative; display: flex; justify-content: space-between; align-items: center; height: 34px; margin-top: 6px;
+  padding: 0 10px; border-radius: 8px; background: rgba(255, 255, 255, .08); overflow: hidden; font-size: 15px; font-weight: 700; }
+.s-bar-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #9146ff; transition: width .25s ease-out; }
+.s-bar-name, .s-bar-count { position: relative; white-space: pre; }
+.s-bar-count { font-variant-numeric: tabular-nums; }
+.s-bar.winner { outline: 2px solid #ffd166; }
+.s-bar.winner .s-bar-fill { background: #c98a00; }
+.s-bar.loser { opacity: .4; }
+#hint { left: 14px; transform: none; max-width: calc(100vw - 400px); overflow: hidden; text-overflow: ellipsis; }
+.toast.chaos { background: rgba(145, 70, 255, .95); }

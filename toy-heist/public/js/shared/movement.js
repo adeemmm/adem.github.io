@@ -5,7 +5,9 @@
 // wall-clock time, no state outside the arguments. Given the same starting
 // state and the same input it must produce the same result on both sides.
 
-import { GRAVITY, ROLE_STATS, ROLE_GUARD, BOOST_FACTOR, carrySpeedFactor } from "./constants.js";
+import {
+  GRAVITY, ROLE_STATS, ROLE_GUARD, BOOST_FACTOR, LOWG_JUMP_FACTOR, LOWG_SPEED_FACTOR, carrySpeedFactor,
+} from "./constants.js";
 import { OBSTACLES, JAIL } from "./map.js";
 
 const EPS = 1e-4;
@@ -14,15 +16,16 @@ export function createBody(x = 0, y = 0, z = 0, yaw = 0) {
   // `carry` is the weight of the loot being carried (0 = none). It is part of
   // the body so prediction and server always agree on the speed penalty.
   // `jailed` (0/1) confines the body to the Toy Jail; `boost` is the number of
-  // ticks of jailbreak speed boost left. All three travel in the snapshot.
-  return { x, y, z, vx: 0, vy: 0, vz: 0, yaw, grounded: true, carry: 0, jailed: 0, boost: 0 };
+  // ticks of jailbreak speed boost left; `lowg` (0/1) is the Zero Gravity chaos
+  // event. All four travel in the snapshot.
+  return { x, y, z, vx: 0, vy: 0, vz: 0, yaw, grounded: true, carry: 0, jailed: 0, boost: 0, lowg: 0 };
 }
 
 export function copyBody(dst, src) {
   dst.x = src.x; dst.y = src.y; dst.z = src.z;
   dst.vx = src.vx; dst.vy = src.vy; dst.vz = src.vz;
   dst.yaw = src.yaw; dst.grounded = src.grounded; dst.carry = src.carry;
-  dst.jailed = src.jailed; dst.boost = src.boost;
+  dst.jailed = src.jailed; dst.boost = src.boost; dst.lowg = src.lowg;
   return dst;
 }
 
@@ -66,6 +69,7 @@ export function stepBody(body, input, role, dt) {
   const sin = Math.sin(input.y), cos = Math.cos(input.y);
   let speed = st.speed * carrySpeedFactor(body.carry);     // heavy loot slows you down
   if (body.boost > 0) { speed *= BOOST_FACTOR; body.boost--; }   // jailbreak escape boost
+  if (body.lowg) speed *= LOWG_SPEED_FACTOR;                     // Zero Gravity chaos event
   const wishX = (-sin * f + cos * r) * speed;
   const wishZ = (-cos * f - sin * r) * speed;
 
@@ -82,7 +86,8 @@ export function stepBody(body, input, role, dt) {
 
   // --- Vertical ---
   if (body.grounded && input.j) { body.vy = st.jump; body.grounded = false; }
-  body.vy += GRAVITY * dt;
+  // Same take-off speed under weaker gravity = LOWG_JUMP_FACTOR times the jump height.
+  body.vy += (body.lowg ? GRAVITY / LOWG_JUMP_FACTOR : GRAVITY) * dt;
 
   // --- Integrate + resolve one axis at a time against the static AABBs ---
   const rad = st.radius, h = st.height;

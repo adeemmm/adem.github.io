@@ -4,6 +4,7 @@ import { SpatialHash } from "../sim/SpatialHash.js";
 import { LootSystem } from "../sim/LootSystem.js";
 import { JailSystem } from "../sim/JailSystem.js";
 import { VisionSystem } from "../sim/VisionSystem.js";
+import { ChaosEngine } from "../sim/TwitchChaos.js";
 import { config } from "../config.js";
 import {
   TICK_MS, TICK_DT, TICK_RATE, MAX_PLAYERS, MAX_GUARDS, TOYS_PER_GUARD,
@@ -58,6 +59,7 @@ export class HeistRoom extends Room {
     this.loot.spawnAll();
     this.jail = new JailSystem(this.state, this.loot);
     this.vision = new VisionSystem();
+    this.chaos = new ChaosEngine(this.state, this.loot);   // Twitch-voted events (off unless configured)
 
     this.state.targetScore = config.targetScore;
     this.state.timeLeft = config.matchSeconds;
@@ -126,6 +128,7 @@ export class HeistRoom extends Room {
   }
 
   onDispose() {
+    this.chaos.dispose();
     activeCodes.delete(this.code);
     console.log(`[room ${this.code}] disposed`);
   }
@@ -163,6 +166,7 @@ export class HeistRoom extends Room {
     this.state.reason = "";
     this.state.timeLeft = config.matchSeconds;
     this.matchEndTick = this.tick + config.matchSeconds * TICK_RATE;
+    this.chaos.start(this.sim);
     recs.forEach((rec, i) => {
       rec.state.score = 0;
       rec.state.arrests = 0;
@@ -192,6 +196,7 @@ export class HeistRoom extends Room {
     this.state.reason = reason;
     this.state.phase = PHASE_ENDED;
     this.jail.resetLever();
+    this.chaos.stop(this.sim);
     console.log(`[room ${this.code}] match over: ${winner} win (${reason}), score ${this.state.score}/${this.state.targetScore}`);
   }
 
@@ -253,6 +258,13 @@ export class HeistRoom extends Room {
       this.broadcast(MSG_EVENT, { k: "deposit", n: rec.state.nid, t: deposit.type, p: deposit.points });
     }
 
+    // Chaos Mode: advance the vote/event cycle; report toys that slipped on a banana.
+    if (this.state.phase === PHASE_PLAYING) {
+      for (const rec of this.chaos.update(this.sim)) {
+        this.broadcast(MSG_EVENT, { k: "slip", n: rec.state.nid });
+      }
+    }
+
     // 4. Rebuild the broad phase and each entity's wire record.
     this.grid.clear();
     for (const rec of this.sim.values()) {
@@ -299,7 +311,7 @@ export class HeistRoom extends Room {
       const snap = {
         t: this.tick,
         a: viewer.lastProcessedSeq,
-        m: [vb.x, vb.y, vb.z, vb.vx, vb.vy, vb.vz, vb.yaw, vb.grounded ? 1 : 0, vb.carry, vb.jailed, vb.boost],
+        m: [vb.x, vb.y, vb.z, vb.vx, vb.vy, vb.vz, vb.yaw, vb.grounded ? 1 : 0, vb.carry, vb.jailed, vb.boost, vb.lowg],
         e: ents,
       };
       if (viewer.detected.length) snap.d = viewer.detected;

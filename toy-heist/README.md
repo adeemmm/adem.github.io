@@ -22,6 +22,7 @@ Open two tabs, create a lobby in one and join with the 4-digit code in the other
 | `server/rooms/schema/HeistState.js` | Low-frequency replicated state (roster, roles, phase) |
 | `server/sim/LootSystem.js` | Loot spawning, grab/drop, extraction deposits |
 | `server/sim/JailSystem.js` | Arrests, Toy Jail confinement, jailbreak lever |
+| `server/sim/TwitchChaos.js` | Twitch IRC client and the Chaos Mode vote/event cycle |
 | `server/sim/VisionSystem.js` | Guard flashlight cone + line-of-sight detection |
 | `server/config.js` | Env overrides for match length and score target |
 | `server/sim/SpatialHash.js` | Grid broad phase used for network interest management |
@@ -32,6 +33,9 @@ Open two tabs, create a lobby in one and join with the 4-digit code in the other
 | `public/js/loot.js` | Loot meshes and the view that mirrors replicated loot state |
 | `public/js/jail.js` | Jail cell, lever and guard target-marker rendering |
 | `public/js/endBanner.js` | Victory/Defeat overlay with match stats |
+| `public/js/audio.js` | Procedural WebAudio sound effects, spatial playback, footsteps |
+| `public/js/streamerUI.js` | Big join code and live chaos vote bars for stream viewers |
+| `public/js/chaos.js` | Lights Out and Banana Rain visuals |
 
 ## Netcode
 
@@ -72,6 +76,30 @@ Open two tabs, create a lobby in one and join with the 4-digit code in the other
 - The lobby is free play: arrests and the lever work, but there is no timer and nobody can win.
 
 Override the rules for quick tests: `HEIST_MATCH_SECONDS=60 HEIST_TARGET_SCORE=100 npm start`.
+
+## Chaos Mode, audio and streamer overlay (Phase 4)
+
+```bash
+TWITCH_CHANNEL=yourchannel npm start   # chat votes drive Chaos Mode
+HEIST_CHAOS=1 npm start                # Chaos Mode without Twitch (random events)
+```
+
+- **Twitch chat.** The server joins the channel's chat anonymously over Twitch's IRC WebSocket
+  (read-only, no token or extra dependency) and reconnects on its own.
+- **Cycle.** During a match: 27 s calm, a 15 s vote, then the winning event for 18 s (60 s total).
+  Viewers type `!vote 1`, `!vote 2` or `!vote 3`; each viewer has one vote per window and can change
+  it. Ties, including nobody voting, are broken at random.
+- **Events.** 1 *Lights Out*: world lighting drops to about 3%, guard flashlights keep working.
+  2 *Zero Gravity*: about 2.5x jump height and 1.4x speed, applied in the shared movement code.
+  3 *Banana Rain*: 15 bananas land on the floor; a toy carrying loot that steps on one drops it.
+- **Audio.** Every sound is synthesised in the browser: pickup chime, drop thud, deposit, arrest,
+  jailbreak siren, detection beep, banana slip, vote and event stingers, victory and defeat jingles,
+  footsteps. Sounds with a world position pan and fade with distance. **M** mutes.
+- **Streamer overlay.** Bottom-right: the join code in 72 px digits, the Twitch channel, and the
+  chaos card with live vote bars. **O** hides or shows it.
+
+Timings can be overridden with `HEIST_CHAOS_CALM_SECONDS`, `HEIST_CHAOS_VOTE_SECONDS` and
+`HEIST_CHAOS_EVENT_SECONDS`; `TWITCH_IRC_URL` points the client at a different IRC endpoint.
 
 ## Not yet built
 

@@ -78,5 +78,28 @@ export function carrySpeedFactor(weight) {
   return Math.max(CARRY_MIN_SPEED, 1 - weight * CARRY_SLOW_PER_WEIGHT);
 }
 
+// Chaos Mode (Twitch chat votes). Timings are defaults; see server/config.js.
+export const CHAOS_OFF = "off";       // chaos mode disabled or no match running
+export const CHAOS_CALM = "calm";     // waiting for the next vote
+export const CHAOS_VOTE = "vote";     // chat is voting
+export const CHAOS_EVENT = "event";   // the winning event is live
+export const CHAOS_CALM_SECONDS = 27; // 27 + 15 + 18 = one 60-second cycle
+export const CHAOS_VOTE_SECONDS = 15;
+export const CHAOS_EVENT_SECONDS = 18;
+
+export const CHAOS_LIGHTS_OUT = 1;
+export const CHAOS_ZERO_GRAVITY = 2;
+export const CHAOS_BANANA_RAIN = 3;
+export const CHAOS_EVENTS = {
+  [CHAOS_LIGHTS_OUT]:   { label: "Lights Out",   blurb: "Only the guards' flashlights still work" },
+  [CHAOS_ZERO_GRAVITY]: { label: "Zero Gravity", blurb: "2.5x jump height, 1.4x speed" },
+  [CHAOS_BANANA_RAIN]:  { label: "Banana Rain",  blurb: "Step on a banana and you drop your loot" },
+};
+
+export const LOWG_JUMP_FACTOR = 2.5;  // jump height multiplier (gravity is divided by this)
+export const LOWG_SPEED_FACTOR = 1.4; // movement speed multiplier
+export const BANANA_COUNT = 15;
+export const BANANA_RADIUS = 0.9;     // metres: stepping this close to a banana slips you
+
 // Client-side smoothing.
 export const INTERP_DELAY_MS = 120; // remote entities render this far in the past

@@ -8,9 +8,14 @@ import {
   TICK_DT, TICK_MS, TICK_RATE, ROLE_STATS, ROLE_TOY, ROLE_GUARD, PHASE_LOBBY, PHASE_PLAYING, PHASE_ENDED,
   STATUS_ACTIVE, STATUS_JAILED, ARREST_RANGE, ARREST_HEIGHT,
   LOOT_TYPES, INTERACT_RANGE, INTERACT_HEIGHT, carrySpeedFactor,
+  TEAM_TOYS, CHAOS_OFF, CHAOS_VOTE, CHAOS_EVENT, CHAOS_EVENTS,
 } from "./shared/constants.js";
 import { JailView, TargetMarkers, inLeverRange } from "./jail.js";
 import { EndBanner, formatTime } from "./endBanner.js";
+import { AudioEngine, Footsteps } from "./audio.js";
+import { StreamerUI } from "./streamerUI.js";
+import { ChaosEffects } from "./chaos.js";
+import { JAIL } from "./shared/map.js";
 import { extractionZoneAt } from "./shared/map.js";
 import { LootView } from "./loot.js";
 import { buildWorld } from "./world.js";
@@ -34,7 +39,7 @@ const camera = new THREE.PerspectiveCamera(65, 1, 0.1, 300);
 camera.position.set(0, 14, 52);
 camera.lookAt(0, 0, 0);
 
-const solids = buildWorld(scene);
+const { solids, lights } = buildWorld(scene);
 const input = new Input(canvas);
 const chase = new ChaseCamera(camera, solids);
 
@@ -55,6 +60,25 @@ const loot = new LootView(scene);
 const jailView = new JailView(scene);
 const targets = new TargetMarkers(document.getElementById("targets"), camera);
 const endBanner = new EndBanner(document.getElementById("end"));
+const audio = new AudioEngine();
+const footsteps = new Footsteps(audio);
+const streamer = new StreamerUI(document.getElementById("streamer"));
+const chaosFx = new ChaosEffects(scene, lights);
+let chaosPhase = CHAOS_OFF;   // last seen chaos phase, to detect transitions
+let spottedBeepAt = 0;        // next time (ms) the "spotted" warning may beep again
+let detectedCount = 0;        // guard: how many toys were lit last frame
+
+// Loot changing hands -> positional chime / thud at the player or the item.
+loot.onChange = (kind, item, previousCarrier) => {
+  if (kind === "pickup") {
+    const avatar = avatarOf(item.carrier);
+    if (avatar) audio.play("pickup", avatar.position);
+  } else {
+    // Deposits respawn the item elsewhere, so the thud belongs where the carrier stands.
+    const avatar = avatarOf(previousCarrier);
+    audio.play("thud", avatar ? avatar.position : item);
+  }
+};
 
 // Match-level facts derived from replicated state (refreshed in net.onState).
 const match = { phase: PHASE_LOBBY, jailed: 0, toys: 0, leverProgress: 0, leverHolder: 0 };
@@ -126,6 +150,7 @@ net.onState = (state) => {
   for (const [sessionId, r] of remotes) {
     if (seen.has(sessionId)) continue;
     destroyAvatar(r.model);
+    footsteps.forget(r.nid);
     remotes.delete(sessionId);
     remotesByNid.delete(r.nid);
   }
@@ -137,6 +162,7 @@ net.onState = (state) => {
   if (state.phase !== match.phase) {
     match.phase = state.phase;
     if (state.phase === PHASE_ENDED) {
+      if (me) audio.play((state.winner === TEAM_TOYS) === (me.role === ROLE_TOY) ? "victory" : "defeat");
       if (document.pointerLockElement) document.exitPointerLock();   // free the mouse for the banner
     } else {
       endBanner.hide();
@@ -144,6 +170,21 @@ net.onState = (state) => {
   }
   // Re-rendered on every patch while ended so late-arriving stats are included.
   if (state.phase === PHASE_ENDED && me) endBanner.show(state, me);
+
+  // Chaos Mode: announce the vote opening and the winning event.
+  if (state.chaos.phase !== chaosPhase) {
+    chaosPhase = state.chaos.phase;
+    if (chaosPhase === CHAOS_VOTE) {
+      audio.play("vote");
+      toast("Chaos vote! Chat decides what happens next", "chaos");
+    } else if (chaosPhase === CHAOS_EVENT) {
+      audio.play("chaos");
+      const def = CHAOS_EVENTS[state.chaos.event];
+      if (def) toast(`${def.label}! ${def.blurb}`, "chaos");
+    }
+  }
+  chaosFx.sync(state);
+  streamer.update(state);
 
   loot.sync(state.loot);
   updateHud(state);
@@ -153,11 +194,18 @@ net.onState = (state) => {
 const nameOf = (nid, fallback) => nid === local.nid ? "You" : (remotesByNid.get(nid) || {}).name || fallback;
 
 net.onEvent = (ev) => {
+  const at = (nid) => { const avatar = avatarOf(nid); return avatar ? avatar.position : null; };
   if (ev.k === "deposit") {
+    audio.play("deposit", at(ev.n));
     toast(`${nameOf(ev.n, "A toy")} extracted ${LOOT_TYPES[ev.t].label}  +${ev.p}`);
+  } else if (ev.k === "slip") {
+    audio.play("slip", at(ev.n));
+    if (ev.n === local.nid) toast("You slipped on a banana and dropped your loot!", "arrest");
   } else if (ev.k === "arrest") {
+    audio.play("arrest", at(ev.g));
     toast(`${nameOf(ev.g, "A guard")} arrested ${nameOf(ev.n, "a toy").replace(/^You$/, "you")}`, "arrest");
   } else if (ev.k === "jailbreak") {
+    audio.play("siren", { x: JAIL.x, y: 2, z: JAIL.z });   // alarm blares from the jail itself
     toast(`Jailbreak! ${nameOf(ev.n, "A toy")} freed ${ev.c} ${ev.c === 1 ? "toy" : "toys"}`);
   }
 };
@@ -189,6 +237,9 @@ net.onDisconnect = () => {
   for (const r of remotes.values()) destroyAvatar(r.model);
   remotes.clear(); remotesByNid.clear();
   loot.clear();
+  chaosFx.clear();
+  footsteps.clear();
+  chaosPhase = CHAOS_OFF;
   endBanner.hide();
   targets.update([]);
   match.phase = PHASE_LOBBY;
@@ -245,10 +296,21 @@ function frame(now) {
       r.model.visible = true;
       r.model.position.set(tmp.x, tmp.y, tmp.z);
       r.model.rotation.y = tmp.yaw;
+      footsteps.track(r.nid, r.model.position, r.role === ROLE_GUARD);
     }
+    if (local.model) footsteps.track(local.nid, local.pos, local.role === ROLE_GUARD);
+
+    // Detection beeps: a toy hears a warning while lit; a guard hears each new catch.
+    if (local.role === ROLE_TOY && spotted && now >= spottedBeepAt && match.phase !== PHASE_ENDED) {
+      audio.play("beep");
+      spottedBeepAt = now + 1400;
+    }
+    if (local.role === ROLE_GUARD && detected.length > detectedCount) audio.play("beep");
+    detectedCount = detected.length;
 
     loot.update(now, avatarOf);
     jailView.update(now, dt, match.jailed, match.leverProgress);
+    chaosFx.update(dt);
     updateInteractionHud();
 
     chase.update(local.pos, ROLE_STATS[local.role].height * 0.9, input.yaw, input.pitch, input.zoom, dt);
@@ -264,6 +326,7 @@ function frame(now) {
     }
     camera.updateMatrixWorld();
     targets.update(targetPoints);
+    audio.setListener(camera);
 
     ui.hint.hidden = input.locked;
     ui.debug.textContent =
@@ -299,6 +362,7 @@ const urlCode = new URLSearchParams(location.search).get("code");
 if (urlCode) ui.code.value = urlCode;
 
 async function enter(action) {
+  audio.unlock();   // the click that got us here is the user gesture browsers require
   ui.error.textContent = "";
   ui.create.disabled = ui.join.disabled = true;
   try {
@@ -321,6 +385,12 @@ ui.code.addEventListener("keydown", (e) => { if (e.key === "Enter") ui.join.clic
 ui.code.addEventListener("input", () => { ui.code.value = ui.code.value.replace(/\D/g, ""); });
 ui.start.addEventListener("click", () => net.requestStart());
 ui.again.addEventListener("click", () => net.requestStart());
+canvas.addEventListener("click", () => audio.unlock());
+addEventListener("keydown", (e) => {
+  if (e.repeat || !net.room || e.target instanceof HTMLInputElement) return;
+  if (e.code === "KeyM") toast(audio.toggleMute() ? "Sound muted" : "Sound on");
+  if (e.code === "KeyO") streamer.toggle();
+});
 
 function updateHud(state) {
   ui.hudCode.textContent = state.code;
@@ -443,4 +513,4 @@ function toast(text, kind = "") {
 }
 
 // Debug handle for the console / automated tests.
-window.__heist = { net, prediction, remotes, local, input, scene, camera, loot, match, getDetected: () => detected };
+window.__heist = { net, prediction, remotes, local, input, scene, camera, loot, match, audio, lights, chaosFx, getDetected: () => detected };

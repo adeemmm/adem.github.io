@@ -6,7 +6,7 @@
 // because JS class-field initialisers would shadow the schema's accessors.
 
 import { Schema, MapSchema, defineTypes } from "@colyseus/schema";
-import { PHASE_LOBBY, ROLE_TOY, STATUS_ACTIVE, MATCH_SECONDS, TARGET_SCORE } from "../../../public/js/shared/constants.js";
+import { PHASE_LOBBY, ROLE_TOY, STATUS_ACTIVE, MATCH_SECONDS, TARGET_SCORE, CHAOS_OFF } from "../../../public/js/shared/constants.js";
 
 export class PlayerState extends Schema {
   constructor() {
@@ -38,6 +38,34 @@ export class LootState extends Schema {
 }
 defineTypes(LootState, { type: "string", x: "float32", y: "float32", z: "float32", carrier: "uint8" });
 
+// Chaos Mode: the vote/event cycle driven by Twitch chat (server/sim/TwitchChaos.js).
+export class ChaosState extends Schema {
+  constructor() {
+    super();
+    this.phase = CHAOS_OFF;   // off | calm | vote | event
+    this.event = 0;           // live (or last winning) event id, 0 = none
+    this.timeLeft = 0;        // whole seconds left in the current phase
+    this.votes1 = 0;          // live tallies for !vote 1 / 2 / 3
+    this.votes2 = 0;
+    this.votes3 = 0;
+    this.channel = "";        // Twitch channel being listened to ("" = none)
+  }
+}
+defineTypes(ChaosState, {
+  phase: "string", event: "uint8", timeLeft: "uint8",
+  votes1: "uint16", votes2: "uint16", votes3: "uint16", channel: "string",
+});
+
+// A temporary floor hazard (Banana Rain).
+export class HazardState extends Schema {
+  constructor(x = 0, z = 0) {
+    super();
+    this.x = x;
+    this.z = z;
+  }
+}
+defineTypes(HazardState, { x: "float32", z: "float32" });
+
 export class HeistState extends Schema {
   constructor() {
     super();
@@ -52,10 +80,13 @@ export class HeistState extends Schema {
     this.leverHolder = 0;             // nid of the toy pulling the lever, 0 = nobody
     this.players = new MapSchema();   // sessionId -> PlayerState
     this.loot = new MapSchema();      // loot id -> LootState
+    this.chaos = new ChaosState();
+    this.hazards = new MapSchema();   // hazard id -> HazardState
   }
 }
 defineTypes(HeistState, {
   code: "string", phase: "string", score: "uint32", targetScore: "uint16", timeLeft: "uint16",
   winner: "string", reason: "string", leverProgress: "uint8", leverHolder: "uint8",
   players: { map: PlayerState }, loot: { map: LootState },
+  chaos: ChaosState, hazards: { map: HazardState },
 });
