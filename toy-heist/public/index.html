@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Toy Heist</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    { "imports": { "three": "/vendor/three/three.module.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Main menu: create a lobby or join one by 4-digit code -->
+  <div id="menu" class="overlay">
+    <div class="panel">
+      <h1>TOY HEIST</h1>
+      <p class="tagline">24 Toys. 8 Guards. One vault.</p>
+      <label>Name <input id="name" maxlength="16" placeholder="Your name" autocomplete="off"></label>
+      <button id="create">Create lobby</button>
+      <div class="divider">or</div>
+      <div class="row">
+        <input id="code" inputmode="numeric" maxlength="4" placeholder="0000" autocomplete="off">
+        <button id="join">Join</button>
+      </div>
+      <p id="error" class="error"></p>
+    </div>
+  </div>
+
+  <!-- In-game HUD -->
+  <div id="hud" hidden>
+    <div id="topbar">
+      <span class="chip">CODE <b id="hud-code">----</b></span>
+      <span class="chip" id="hud-role">TOY</span>
+      <span class="chip" id="hud-phase">LOBBY</span>
+      <span class="chip"><b id="hud-count">0</b>/32</span>
+      <button id="start" hidden>Start match</button>
+    </div>
+    <ul id="roster"></ul>
+    <div id="debug"></div>
+    <div id="hint">Click to capture mouse &middot; WASD move &middot; Mouse look &middot; Space jump &middot; Wheel zoom &middot; Esc release</div>
+    <div id="crosshair"></div>
+  </div>
+
+  <script src="/vendor/colyseus/colyseus.js"></script>
+  <script type="module" src="js/game.js"></script>
+</body>
+</html>

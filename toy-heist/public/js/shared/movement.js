@@ -1,0 +1,106 @@
+// Deterministic kinematic character controller.
+//
+// The SAME code runs on the server (authoritative) and on the client
+// (prediction + reconciliation replay). It must stay pure: no randomness, no
+// wall-clock time, no state outside the arguments. Given the same starting
+// state and the same input it must produce the same result on both sides.
+
+import { GRAVITY, ROLE_STATS, ROLE_GUARD } from "./constants.js";
+import { OBSTACLES } from "./map.js";
+
+const EPS = 1e-4;
+
+export function createBody(x = 0, y = 0, z = 0, yaw = 0) {
+  return { x, y, z, vx: 0, vy: 0, vz: 0, yaw, grounded: true };
+}
+
+export function copyBody(dst, src) {
+  dst.x = src.x; dst.y = src.y; dst.z = src.z;
+  dst.vx = src.vx; dst.vy = src.vy; dst.vz = src.vz;
+  dst.yaw = src.yaw; dst.grounded = src.grounded;
+  return dst;
+}
+
+// Clamp untrusted input into the legal range. Returns null if it is garbage.
+export function sanitizeInput(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const f = Number(raw.f), r = Number(raw.r), y = Number(raw.y), s = Number(raw.s);
+  if (!Number.isFinite(f) || !Number.isFinite(r) || !Number.isFinite(y) || !Number.isInteger(s)) return null;
+  return {
+    s,
+    f: Math.max(-1, Math.min(1, f)),
+    r: Math.max(-1, Math.min(1, r)),
+    y,
+    j: !!raw.j,
+  };
+}
+
+function overlaps(o, minX, maxX, minY, maxY, minZ, maxZ) {
+  return maxX > o.minX + EPS && minX < o.maxX - EPS &&
+         maxY > o.minY + EPS && minY < o.maxY - EPS &&
+         maxZ > o.minZ + EPS && minZ < o.maxZ - EPS;
+}
+
+/**
+ * Advance `body` by one fixed step.
+ * input: { f: forward -1..1, r: right -1..1, y: camera yaw (rad), j: jump held }
+ * Camera yaw 0 looks down -Z; positive yaw turns left (standard Three.js Y rotation).
+ */
+export function stepBody(body, input, role, dt) {
+  const st = ROLE_STATS[role] || ROLE_STATS.toy;
+
+  // --- Desired horizontal velocity, relative to the camera ---
+  let f = input.f, r = input.r;
+  const len = Math.hypot(f, r);
+  if (len > 1) { f /= len; r /= len; }
+  const sin = Math.sin(input.y), cos = Math.cos(input.y);
+  const wishX = (-sin * f + cos * r) * st.speed;
+  const wishZ = (-cos * f - sin * r) * st.speed;
+
+  // Accelerate towards the wish velocity (snappy on ground, floaty in air).
+  const maxDelta = (body.grounded ? st.accel : st.airAccel) * dt;
+  const dvx = wishX - body.vx, dvz = wishZ - body.vz;
+  const dvLen = Math.hypot(dvx, dvz);
+  if (dvLen <= maxDelta) { body.vx = wishX; body.vz = wishZ; }
+  else { body.vx += (dvx / dvLen) * maxDelta; body.vz += (dvz / dvLen) * maxDelta; }
+
+  // --- Facing: guards aim their flashlight with the camera, toys face travel ---
+  if (role === ROLE_GUARD) body.yaw = input.y;
+  else if (len > 0.01) body.yaw = Math.atan2(-wishX, -wishZ);
+
+  // --- Vertical ---
+  if (body.grounded && input.j) { body.vy = st.jump; body.grounded = false; }
+  body.vy += GRAVITY * dt;
+
+  // --- Integrate + resolve one axis at a time against the static AABBs ---
+  const rad = st.radius, h = st.height;
+
+  body.x += body.vx * dt;
+  for (let i = 0; i < OBSTACLES.length; i++) {
+    const o = OBSTACLES[i];
+    if (!overlaps(o, body.x - rad, body.x + rad, body.y, body.y + h, body.z - rad, body.z + rad)) continue;
+    body.x = body.vx > 0 ? o.minX - rad : o.maxX + rad;
+    body.vx = 0;
+  }
+
+  body.z += body.vz * dt;
+  for (let i = 0; i < OBSTACLES.length; i++) {
+    const o = OBSTACLES[i];
+    if (!overlaps(o, body.x - rad, body.x + rad, body.y, body.y + h, body.z - rad, body.z + rad)) continue;
+    body.z = body.vz > 0 ? o.minZ - rad : o.maxZ + rad;
+    body.vz = 0;
+  }
+
+  body.y += body.vy * dt;
+  body.grounded = false;
+  for (let i = 0; i < OBSTACLES.length; i++) {
+    const o = OBSTACLES[i];
+    if (!overlaps(o, body.x - rad, body.x + rad, body.y, body.y + h, body.z - rad, body.z + rad)) continue;
+    if (body.vy <= 0) { body.y = o.maxY; body.grounded = true; }   // landed on top
+    else { body.y = o.minY - h; }                                   // bumped head
+    body.vy = 0;
+  }
+  if (body.y <= 0) { body.y = 0; body.vy = 0; body.grounded = true; } // floor plane
+
+  return body;
+}

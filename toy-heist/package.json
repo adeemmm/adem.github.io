@@ -1,0 +1,24 @@
+{
+  "name": "toy-heist",
+  "version": "0.1.0",
+  "description": "3D third-person asymmetric multiplayer party heist game (24 Toys vs 8 Guards)",
+  "private": true,
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "bots": "node tools/bots.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@colyseus/schema": "^3.0.76",
+    "@colyseus/ws-transport": "^0.16.5",
+    "colyseus": "^0.16.5",
+    "colyseus.js": "^0.16.22",
+    "express": "^4.22.3",
+    "three": "^0.180.0"
+  }
+}
