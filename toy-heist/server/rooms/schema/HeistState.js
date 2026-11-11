@@ -6,7 +6,7 @@
 // because JS class-field initialisers would shadow the schema's accessors.
 
 import { Schema, MapSchema, defineTypes } from "@colyseus/schema";
-import { PHASE_LOBBY, ROLE_TOY } from "../../../public/js/shared/constants.js";
+import { PHASE_LOBBY, ROLE_TOY, STATUS_ACTIVE, MATCH_SECONDS, TARGET_SCORE } from "../../../public/js/shared/constants.js";
 
 export class PlayerState extends Schema {
   constructor() {
@@ -16,9 +16,15 @@ export class PlayerState extends Schema {
     this.role = ROLE_TOY;
     this.host = false;
     this.score = 0;        // points this player has personally extracted
+    this.status = STATUS_ACTIVE;   // toys only: active | jailed
+    this.arrests = 0;      // guards: toys arrested this match
+    this.rescues = 0;      // toys: team-mates freed from jail this match
   }
 }
-defineTypes(PlayerState, { nid: "uint8", name: "string", role: "string", host: "boolean", score: "uint32" });
+defineTypes(PlayerState, {
+  nid: "uint8", name: "string", role: "string", host: "boolean", score: "uint32",
+  status: "string", arrests: "uint8", rescues: "uint8",
+});
 
 export class LootState extends Schema {
   constructor() {
@@ -38,11 +44,18 @@ export class HeistState extends Schema {
     this.code = "";
     this.phase = PHASE_LOBBY;
     this.score = 0;                   // team score for the toys
+    this.targetScore = TARGET_SCORE;  // toys win at this score
+    this.timeLeft = MATCH_SECONDS;    // whole seconds remaining in the match
+    this.winner = "";                 // "toys" | "guards" once phase === "ended"
+    this.reason = "";                 // "score" | "jailed" | "time"
+    this.leverProgress = 0;           // jail lever hold progress, 0-100
+    this.leverHolder = 0;             // nid of the toy pulling the lever, 0 = nobody
     this.players = new MapSchema();   // sessionId -> PlayerState
     this.loot = new MapSchema();      // loot id -> LootState
   }
 }
 defineTypes(HeistState, {
-  code: "string", phase: "string", score: "uint32",
+  code: "string", phase: "string", score: "uint32", targetScore: "uint16", timeLeft: "uint16",
+  winner: "string", reason: "string", leverProgress: "uint8", leverHolder: "uint8",
   players: { map: PlayerState }, loot: { map: LootState },
 });

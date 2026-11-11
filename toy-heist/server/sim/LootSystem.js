@@ -10,10 +10,10 @@
 
 import { LootState } from "../rooms/schema/HeistState.js";
 import {
-  LOOT_TYPES, LOOT_COUNT, INTERACT_RANGE, INTERACT_HEIGHT, ROLE_TOY,
+  LOOT_TYPES, LOOT_COUNT, INTERACT_RANGE, INTERACT_HEIGHT, ROLE_TOY, STATUS_ACTIVE,
 } from "../../public/js/shared/constants.js";
 import {
-  ARENA_SIZE, EXTRACTION_ZONES, extractionZoneAt, isBlocked, groundHeightAt,
+  ARENA_SIZE, EXTRACTION_ZONES, extractionZoneAt, isBlocked, groundHeightAt, nearJail,
 } from "../../public/js/shared/map.js";
 
 const SPAWN_EDGE_MARGIN = 2;      // keep loot off the perimeter walls
@@ -49,7 +49,7 @@ export class LootSystem {
 
   /** 'E' pressed: drop what you hold, otherwise grab the nearest free item in reach. */
   interact(rec) {
-    if (rec.state.role !== ROLE_TOY) return;   // guards cannot carry loot
+    if (rec.state.role !== ROLE_TOY || rec.state.status !== STATUS_ACTIVE) return;   // guards and jailed toys cannot carry loot
     if (rec.carrying) { this.drop(rec); return; }
 
     const b = rec.body;
@@ -127,7 +127,7 @@ export class LootSystem {
   }
 
   isFreeSpot(self, x, z, spacing) {
-    if (isBlocked(x, z, SPAWN_OBSTACLE_MARGIN)) return false;
+    if (isBlocked(x, z, SPAWN_OBSTACLE_MARGIN) || nearJail(x, z, 2)) return false;
     for (const zone of EXTRACTION_ZONES) {
       if (Math.hypot(x - zone.x, z - zone.z) < zone.r + SPAWN_ZONE_MARGIN) return false;
     }

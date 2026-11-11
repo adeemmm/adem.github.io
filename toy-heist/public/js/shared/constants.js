@@ -15,6 +15,30 @@ export const ROLE_GUARD = "guard";
 
 export const PHASE_LOBBY = "lobby";
 export const PHASE_PLAYING = "playing";
+export const PHASE_ENDED = "ended";
+
+export const STATUS_ACTIVE = "active";
+export const STATUS_JAILED = "jailed";
+
+export const TEAM_TOYS = "toys";
+export const TEAM_GUARDS = "guards";
+
+// Match rules (server defaults; see server/config.js for env overrides).
+export const MATCH_SECONDS = 300;   // 5-minute round
+export const TARGET_SCORE = 500;    // toys win on reaching this team score
+
+// Guard flashlight detection: a 45-degree cone (22.5 degrees either side of forward).
+export const VISION_RANGE = 12;                       // metres
+export const VISION_HALF_ANGLE = (45 / 2) * Math.PI / 180;
+export const VISION_EVERY = 3;                        // re-evaluate every Nth tick (10 Hz)
+
+// Arrest + jailbreak.
+export const ARREST_RANGE = 1.8;       // metres (horizontal) between guard and toy
+export const ARREST_HEIGHT = 2.5;      // max vertical gap for an arrest
+export const LEVER_RANGE = 2.2;        // metres from the jail lever
+export const LEVER_HOLD_TICKS = Math.round(2.5 * TICK_RATE);   // hold E for 2.5 s
+export const BOOST_TICKS = 3 * TICK_RATE;                      // 3 s escape boost
+export const BOOST_FACTOR = 1.5;                               // +50% speed while boosted
 
 export const GRAVITY = -28;
 

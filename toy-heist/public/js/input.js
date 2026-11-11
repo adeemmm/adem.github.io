@@ -14,16 +14,23 @@ export class Input {
     this.sensitivity = 0.0024;
     this.enabled = false;     // set true once in a room
     this.interactQueued = false;   // E was pressed since the last sim tick
+    this.attackQueued = false;     // F / left click since the last sim tick
 
     addEventListener("keydown", (e) => {
       if (!this.locked) return;
       this.keys.add(e.code);
       if (e.code === "KeyE" && !e.repeat) this.interactQueued = true;
+      if (e.code === "KeyF" && !e.repeat) this.attackQueued = true;
       if (e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault();
     });
     addEventListener("keyup", (e) => this.keys.delete(e.code));
     addEventListener("blur", () => this.keys.clear());
 
+    // Left click while the mouse is captured = arrest. (The click that captures
+    // the mouse arrives before the lock, so it never counts.)
+    document.addEventListener("mousedown", (e) => {
+      if (this.locked && e.button === 0) this.attackQueued = true;
+    });
     canvas.addEventListener("click", () => {
       if (this.enabled && !this.locked) canvas.requestPointerLock();
     });
@@ -48,8 +55,8 @@ export class Input {
 
   /** One movement sample for a simulation tick (matches the shared input shape). */
   sample(seq) {
-    const interact = this.interactQueued;
-    this.interactQueued = false;
+    const interact = this.interactQueued, attack = this.attackQueued;
+    this.interactQueued = this.attackQueued = false;
     return {
       s: seq,
       f: (this.down("KeyW", "ArrowUp") ? 1 : 0) - (this.down("KeyS", "ArrowDown") ? 1 : 0),
@@ -57,6 +64,8 @@ export class Input {
       y: this.yaw,
       j: this.down("Space"),
       e: interact,   // edge-triggered: true for exactly one tick per press
+      h: this.down("KeyE"),   // held: pulling the jail lever
+      a: attack,     // edge-triggered arrest
     };
   }
 }

@@ -15,7 +15,7 @@ for (let i = 0; i < count; i++) {
     const timer = setInterval(() => {
       if (Math.random() < 0.02) yaw += (Math.random() - 0.5) * 2.5;
       jump = Math.random() < 0.03;
-      room.send(MSG_INPUT, { s: ++seq, f: 1, r: 0, y: yaw, j: jump, e: Math.random() < 0.02 });   // occasionally grab/drop loot
+      room.send(MSG_INPUT, { s: ++seq, f: 1, r: 0, y: yaw, j: jump, e: Math.random() < 0.02, a: Math.random() < 0.1 });   // occasionally grab/drop loot; guards try arrests
     }, TICK_MS);
     room.onLeave(() => clearInterval(timer));
   } catch (err) {

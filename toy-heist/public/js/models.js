@@ -2,7 +2,7 @@
 // the feet and their front facing -Z, matching the shared movement code's yaw
 // convention, so `group.rotation.y = body.yaw` is all the orientation needed.
 import * as THREE from "three";
-import { ROLE_STATS, ROLE_GUARD, ROLE_TOY } from "./shared/constants.js";
+import { ROLE_STATS, ROLE_GUARD, ROLE_TOY, VISION_RANGE, VISION_HALF_ANGLE } from "./shared/constants.js";
 
 const TOY_COLORS = [0xef476f, 0xffd166, 0x06d6a0, 0x4cc9f0, 0xf78c6b, 0xb5179e, 0x90be6d, 0xf9c74f];
 const flat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.7, flatShading: true, ...extra });
@@ -68,7 +68,8 @@ export function createGuardModel() {
   barrel.rotation.x = Math.PI / 2;
   torch.add(barrel);
 
-  const CONE_LEN = 12, CONE_ANGLE = 0.42;   // radians, half-angle
+  // The visible beam matches the server's detection cone (VisionSystem.js).
+  const CONE_LEN = VISION_RANGE, CONE_ANGLE = VISION_HALF_ANGLE;
   const coneGeo = new THREE.ConeGeometry(Math.tan(CONE_ANGLE) * CONE_LEN, CONE_LEN, 16, 1, true);
   coneGeo.translate(0, -CONE_LEN / 2, 0);   // apex at origin
   coneGeo.rotateX(Math.PI / 2);             // open towards -Z

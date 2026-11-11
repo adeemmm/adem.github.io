@@ -92,6 +92,55 @@ export function groundHeightAt(x, z, fromY) {
   return ground;
 }
 
+// Toy Jail: jailed toys are confined to this rectangle (see movement.js).
+// It is a laser-fenced floor area, not a solid, so free players can pass through.
+export const JAIL = (() => {
+  const x = 33.5, z = -30, w = 8, d = 8;
+  return { x, z, w, d, minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 };
+})();
+
+// The lever that opens the jail sits just outside its west fence.
+export const JAIL_LEVER = { x: JAIL.minX - 1.5, z: JAIL.z };
+
+/** Standing position for the i-th jailed toy (5 x 5 grid inside the jail). */
+export function jailSlot(i) {
+  const col = i % 5, row = Math.floor(i / 5) % 5;
+  return { x: JAIL.minX + 1.2 + col * 1.4, z: JAIL.minZ + 1.2 + row * 1.4 };
+}
+
+/** True if (x, z) is inside the jail or its lever apron, padded by `margin`. */
+export function nearJail(x, z, margin = 0) {
+  return x > JAIL_LEVER.x - 1 - margin && x < JAIL.maxX + margin &&
+         z > JAIL.minZ - margin && z < JAIL.maxZ + margin;
+}
+
+/**
+ * Line-of-sight test: true if the segment a -> b does not pass through any
+ * obstacle box (slab method). Used for guard flashlight detection.
+ */
+export function lineOfSight(ax, ay, az, bx, by, bz) {
+  const dx = bx - ax, dy = by - ay, dz = bz - az;
+  for (let i = 0; i < OBSTACLES.length; i++) {
+    const o = OBSTACLES[i];
+    // Clip the segment's parameter range [t0, t1] against each axis slab in turn.
+    let t0 = 0, t1 = 1, hit = true;
+    for (let axis = 0; axis < 3 && hit; axis++) {
+      const origin = axis === 0 ? ax : axis === 1 ? ay : az;
+      const delta = axis === 0 ? dx : axis === 1 ? dy : dz;
+      const min = axis === 0 ? o.minX : axis === 1 ? o.minY : o.minZ;
+      const max = axis === 0 ? o.maxX : axis === 1 ? o.maxY : o.maxZ;
+      if (Math.abs(delta) < 1e-9) { hit = origin >= min && origin <= max; continue; }
+      let ta = (min - origin) / delta, tb = (max - origin) / delta;
+      if (ta > tb) { const tmp = ta; ta = tb; tb = tmp; }
+      if (ta > t0) t0 = ta;
+      if (tb < t1) t1 = tb;
+      hit = t0 <= t1;
+    }
+    if (hit) return false;   // the segment passes through this box
+  }
+  return true;
+}
+
 // Toys spawn in the south strip, guards in a ring around the vault.
 // Yaw 0 faces -Z (see movement.js).
 export function spawnPoint(role, index) {

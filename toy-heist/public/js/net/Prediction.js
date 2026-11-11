@@ -33,7 +33,7 @@ export class Prediction {
     if (this.pending.length > MAX_PENDING) this.pending.shift();
   }
 
-  /** m = [x, y, z, vx, vy, vz, yaw, grounded, carryWeight], ack = last input seq the server applied. */
+  /** m = [x, y, z, vx, vy, vz, yaw, grounded, carryWeight, jailed, boostTicks], ack = last input seq the server applied. */
   reconcile(m, ack, role) {
     const bx = this.body.x, by = this.body.y, bz = this.body.z;
 
@@ -45,6 +45,8 @@ export class Prediction {
     b.x = m[0]; b.y = m[1]; b.z = m[2];
     b.vx = m[3]; b.vy = m[4]; b.vz = m[5];
     b.yaw = m[6]; b.grounded = m[7] === 1;
+    b.jailed = m[9] || 0;  // confined to the Toy Jail
+    b.boost = m[10] || 0;  // jailbreak speed-boost ticks remaining
     b.carry = m[8] || 0;   // authoritative carry weight -> same speed penalty in the replay
     for (let i = 0; i < this.pending.length; i++) stepBody(b, this.pending[i], role, TICK_DT);
 
