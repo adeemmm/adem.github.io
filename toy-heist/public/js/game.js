@@ -17,6 +17,7 @@ import { StreamerUI } from "./streamerUI.js";
 import { ChaosEffects } from "./chaos.js";
 import { JAIL } from "./shared/map.js";
 import { ShopUI } from "./shop.js";
+import { AuthMenu } from "./auth.js";
 import { resolveSkin } from "./shared/cosmetics.js";
 import { extractionZoneAt } from "./shared/map.js";
 import { LootView } from "./loot.js";
@@ -391,7 +392,7 @@ const ui = {
   roster: $("roster"), hudScore: $("hud-score"), carry: $("carry"), prompt: $("prompt"), toasts: $("toasts"),
 };
 
-ui.name.value = localStorage.getItem("heist-name") || "";
+const auth = new AuthMenu($("menu"));   // name -> password -> lobby steps; holds the session token
 const urlCode = new URLSearchParams(location.search).get("code");
 if (urlCode) ui.code.value = urlCode;
 
@@ -400,21 +401,20 @@ async function enter(action) {
   ui.error.textContent = "";
   ui.create.disabled = ui.join.disabled = true;
   try {
-    const name = ui.name.value.trim();
-    localStorage.setItem("heist-name", name);
-    await action(name);
+    await action(auth.token);
     ui.menu.hidden = true;
     ui.hud.hidden = false;
     input.enabled = true;
   } catch (err) {
     ui.error.textContent = err.message || "Could not connect";
+    if (err.code === 401) auth.signOut(err.message);   // session expired: back to the name step
   } finally {
     ui.create.disabled = ui.join.disabled = false;
   }
 }
 
-ui.create.addEventListener("click", () => enter((name) => net.createLobby(name)));
-ui.join.addEventListener("click", () => enter((name) => net.joinLobby(ui.code.value.trim(), name)));
+ui.create.addEventListener("click", () => enter((token) => net.createLobby(token)));
+ui.join.addEventListener("click", () => enter((token) => net.joinLobby(ui.code.value.trim(), token)));
 ui.code.addEventListener("keydown", (e) => { if (e.key === "Enter") ui.join.click(); });
 ui.code.addEventListener("input", () => { ui.code.value = ui.code.value.replace(/\D/g, ""); });
 ui.start.addEventListener("click", () => net.requestStart());

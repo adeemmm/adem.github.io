@@ -19,16 +19,21 @@ export class NetClient {
 
   get sessionId() { return this.room ? this.room.sessionId : null; }
 
-  async createLobby(name) {
-    this.attach(await this.client.create(ROOM_NAME, { name }));
+  // `token` is the session token from AuthMenu, or null to play as a guest.
+  async createLobby(token) {
+    try {
+      this.attach(await this.client.create(ROOM_NAME, { token }));
+    } catch (err) {
+      throw authError(err) || err;
+    }
   }
 
-  async joinLobby(code, name) {
+  async joinLobby(code, token) {
     if (!/^\d{4}$/.test(code)) throw new Error("Enter a 4-digit code");
     try {
-      this.attach(await this.client.joinById(code, { name }));
+      this.attach(await this.client.joinById(code, { token }));
     } catch (err) {
-      throw new Error(/full|locked/i.test(err.message) ? "That lobby is full" : `No lobby with code ${code}`);
+      throw authError(err) || new Error(/full|locked/i.test(err.message) ? "That lobby is full" : `No lobby with code ${code}`);
     }
   }
 
@@ -45,4 +50,15 @@ export class NetClient {
   sendInput(input) { if (this.room) this.room.send(MSG_INPUT, input); }
   sendShop(action, skinId) { if (this.room) this.room.send(MSG_SHOP, { a: action, id: skinId }); }
   requestStart() { if (this.room) this.room.send(MSG_START); }
+}
+
+// The room rejects joins with 401 (session expired) or 409 (account already in
+// the lobby); those messages are written for the player, so pass them through.
+function authError(err) {
+  if (err && (err.code === 401 || err.code === 409)) {
+    const error = new Error(err.message);
+    error.code = err.code;
+    return error;
+  }
+  return null;
 }

@@ -13,6 +13,7 @@ import { Server, matchMaker } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { HeistRoom } from "./rooms/HeistRoom.js";
 import { getDatabase } from "./db/database.js";
+import { createAuthRouter } from "./auth.js";
 import { TICK_RATE, MAX_PLAYERS } from "../public/js/shared/constants.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -32,7 +33,8 @@ app.get("/api/health", async (_req, res) => {
   });
 });
 
-getDatabase();   // open (and create) the SQLite file now, so a bad path fails at boot
+// Opening the database here means a bad path fails at boot, not mid-match.
+app.use("/api/auth", createAuthRouter(getDatabase()));
 
 const httpServer = http.createServer(app);
 const gameServer = new Server({ transport: new WebSocketTransport({ server: httpServer }) });

@@ -10,7 +10,7 @@ npm start            # http://localhost:2567
 npm run bots 1234    # optional: fill lobby 1234 with 31 wandering bots
 ```
 
-Open two tabs, create a lobby in one and join with the 4-digit code in the other
+Open two tabs (use **Play as Guest** for quick tests), create a lobby in one and join with the 4-digit code in the other
 (or share `http://host:2567/?code=1234`).
 
 ## Layout
@@ -22,7 +22,8 @@ Open two tabs, create a lobby in one and join with the 4-digit code in the other
 | `server/rooms/schema/HeistState.js` | Low-frequency replicated state (roster, roles, phase) |
 | `server/sim/LootSystem.js` | Loot spawning, grab/drop, extraction deposits |
 | `server/sim/JailSystem.js` | Arrests, Toy Jail confinement, jailbreak lever |
-| `server/db/database.js` | SQLite persistence: gold, lifetime stats, unlocked and equipped skins |
+| `server/db/database.js` | SQLite persistence: accounts (bcrypt), gold, lifetime stats, skins |
+| `server/auth.js` | `/api/auth` routes, session tokens, login rate limiting |
 | `server/sim/Progression.js` | Profiles, shop validation, match-end gold payouts |
 | `server/sim/TwitchChaos.js` | Twitch IRC client and the Chaos Mode vote/event cycle |
 | `server/sim/VisionSystem.js` | Guard flashlight cone + line-of-sight detection |
@@ -38,6 +39,7 @@ Open two tabs, create a lobby in one and join with the 4-digit code in the other
 | `public/js/audio.js` | Procedural WebAudio sound effects, spatial playback, footsteps |
 | `public/js/streamerUI.js` | Big join code and live chaos vote bars for stream viewers |
 | `public/js/chaos.js` | Lights Out and Banana Rain visuals |
+| `public/js/auth.js` | Main-menu name, password and lobby steps |
 | `public/js/shop.js` | Safehouse modal: gold, stats, buy and equip skins |
 | `public/js/shared/cosmetics.js` | Skin catalogue, prices and reward rules (server and client) |
 
@@ -111,8 +113,17 @@ Timings can be overridden with `HEIST_CHAOS_CALM_SECONDS`, `HEIST_CHAOS_VOTE_SEC
   start; set `HEIST_DB_PATH` to move it. The `players` table holds `username` (primary key,
   case-insensitive), `gold`, `total_deposits`, `total_arrests`, `unlocked_skins` (JSON),
   `equipped_skin` (toy look) and `equipped_guard_skin` (guard look).
-- **Accounts.** The name typed on the main menu is the account. Leaving it blank plays as a guest,
-  who earns nothing. **There is no login**: anyone who types a name gets that name's gold and skins.
+- **Accounts.** Enter a name on the main menu. A new name asks you to create a password; a known
+  name asks for its password. Passwords are stored only as bcrypt hashes (`bcryptjs`) in the
+  `password_hash` column. **Play as Guest** skips all of this; guests earn nothing.
+- **Sessions.** Logging in returns a session token (kept in memory on the server for 12 hours and in
+  the browser tab's `sessionStorage`). The token, not the password, is sent when joining a room.
+  Restarting the server signs everyone out. One account can be in a lobby only once.
+- **Limits.** Ten failed logins or registrations per address per five minutes. Serve the game over
+  HTTPS in production: over plain HTTP the password crosses the network unencrypted. Behind a
+  reverse proxy, set Express `trust proxy` or every player shares one rate limit.
+- **Older databases.** The `password_hash` column is added automatically. A row that has no password
+  yet (created before accounts existed) is claimed by whoever sets its password first.
 - **Rewards.** When a match ends every connected, named player is paid in one transaction:
   25 gold for finishing, +50 for winning, toys +1 per point they extracted and +15 per team-mate
   freed, guards +40 per arrest. Lobby free play pays nothing.
@@ -124,5 +135,5 @@ Timings can be overridden with `HEIST_CHAOS_CALM_SECONDS`, `HEIST_CHAOS_VOTE_SEC
 
 ## Not yet built
 
-Accounts with real authentication, reconnection, and a rigid-body physics engine (movement uses a
+Password reset or change, reconnection, and a rigid-body physics engine (movement uses a
 deterministic kinematic controller against AABBs).

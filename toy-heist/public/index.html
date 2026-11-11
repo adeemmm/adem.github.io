@@ -17,13 +17,36 @@
     <div class="panel">
       <h1>TOY HEIST</h1>
       <p class="tagline">24 Toys. 8 Guards. One vault.</p>
-      <label>Name <input id="name" maxlength="16" placeholder="Your name" autocomplete="off"></label>
-      <button id="create">Create lobby</button>
-      <div class="divider">or</div>
-      <div class="row">
-        <input id="code" inputmode="numeric" maxlength="4" placeholder="0000" autocomplete="off">
-        <button id="join">Join</button>
+
+      <!-- Step 1: who are you? -->
+      <form id="step-name" class="step">
+        <label>Name <input id="name" maxlength="16" placeholder="Your name" autocomplete="username"></label>
+        <button type="submit" id="continue">Continue</button>
+        <div class="divider">or</div>
+        <button type="button" id="guest" class="secondary">Play as Guest</button>
+      </form>
+
+      <!-- Step 2: create a password (new name) or log in (existing name) -->
+      <form id="step-password" class="step" hidden>
+        <p id="auth-prompt" class="auth-prompt"></p>
+        <label>Password <input id="password" type="password" maxlength="72" autocomplete="current-password"></label>
+        <label id="confirm-row">Repeat password <input id="confirm" type="password" maxlength="72" autocomplete="new-password"></label>
+        <button type="submit" id="auth-submit">Log in</button>
+        <button type="button" id="auth-back" class="link">Use a different name</button>
+      </form>
+
+      <!-- Step 3: create or join a lobby -->
+      <div id="step-lobby" class="step" hidden>
+        <p id="who" class="auth-prompt"></p>
+        <button id="create">Create lobby</button>
+        <div class="divider">or</div>
+        <div class="row">
+          <input id="code" inputmode="numeric" maxlength="4" placeholder="0000" autocomplete="off">
+          <button id="join">Join</button>
+        </div>
+        <button type="button" id="signout" class="link">Sign out</button>
       </div>
+
       <p id="error" class="error"></p>
     </div>
   </div>

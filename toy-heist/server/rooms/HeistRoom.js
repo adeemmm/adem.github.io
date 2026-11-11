@@ -1,4 +1,4 @@
-import { Room } from "colyseus";
+import { Room, ServerError } from "colyseus";
 import { HeistState, PlayerState } from "./schema/HeistState.js";
 import { SpatialHash } from "../sim/SpatialHash.js";
 import { LootSystem } from "../sim/LootSystem.js";
@@ -7,6 +7,7 @@ import { VisionSystem } from "../sim/VisionSystem.js";
 import { ChaosEngine } from "../sim/TwitchChaos.js";
 import { Progression } from "../sim/Progression.js";
 import { getDatabase } from "../db/database.js";
+import { sessions } from "../auth.js";
 import { config } from "../config.js";
 import {
   TICK_MS, TICK_DT, TICK_RATE, MAX_PLAYERS, MAX_GUARDS, TOYS_PER_GUARD,
@@ -92,18 +93,36 @@ export class HeistRoom extends Room {
     console.log(`[room ${this.code}] created`);
   }
 
-  onJoin(client, options) {
+  // Resolve who is joining before they are let in. A session token (from
+  // /api/auth/login or /register) identifies an account; no token = guest.
+  // Guests may suggest a display name, but never one that belongs to an account.
+  onAuth(client, options) {
+    const token = options && options.token;
+    if (token === undefined || token === null || token === "") {
+      const guestName = cleanName(options && options.name);
+      return { account: null, guestName: guestName && !getDatabase().getAccount(guestName) ? guestName : "" };
+    }
+    const account = sessions.resolve(token);
+    if (!account) throw new ServerError(401, "Your session has expired. Please log in again.");
+    for (const rec of this.sim.values()) {
+      if (rec.account && rec.account.toLowerCase() === account.toLowerCase()) {
+        throw new ServerError(409, `${account} is already in this lobby.`);
+      }
+    }
+    return { account, guestName: "" };
+  }
+
+  onJoin(client, options, auth) {
     const p = new PlayerState();
     p.nid = this.freeNids.pop();
-    const givenName = cleanName(options && options.name);
-    p.name = givenName || `Player${p.nid}`;
+    p.name = auth.account || auth.guestName || `Player${p.nid}`;
     p.role = this.pickRoleForNewPlayer();
     p.host = this.state.players.size === 0;
     this.state.players.set(client.sessionId, p);
 
     const rec = {
       client, state: p,
-      account: givenName || null,   // persistence key; null = guest (no name entered)
+      account: auth.account,        // persistence key (authenticated username); null = guest
       deposits: 0,    // loot items banked in the current match
       body: createBody(),
       inputs: [],
