@@ -1,7 +1,7 @@
 // Thin wrapper around the Colyseus browser client (loaded as the global
 // `Colyseus` from /vendor/colyseus/colyseus.js). Owns the socket; everything
 // else talks to the server through this class.
-import { MSG_INPUT, MSG_SNAPSHOT, MSG_START } from "../shared/constants.js";
+import { MSG_INPUT, MSG_SNAPSHOT, MSG_START, MSG_EVENT } from "../shared/constants.js";
 
 const ROOM_NAME = "heist";
 
@@ -12,6 +12,7 @@ export class NetClient {
     this.room = null;
     this.onSnapshot = () => {};   // (snapshot) high-frequency transforms
     this.onState = () => {};      // (state) roster / roles / phase changed
+    this.onEvent = () => {};      // (event) one-shot gameplay events, e.g. deposits
     this.onDisconnect = () => {}; // (code)
   }
 
@@ -33,6 +34,7 @@ export class NetClient {
   attach(room) {
     this.room = room;
     room.onMessage(MSG_SNAPSHOT, (snap) => this.onSnapshot(snap));
+    room.onMessage(MSG_EVENT, (ev) => this.onEvent(ev));
     room.onStateChange((state) => this.onState(state));
     room.onLeave((code) => { this.room = null; this.onDisconnect(code); });
     room.onError((code, message) => console.error("room error", code, message));

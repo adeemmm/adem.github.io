@@ -53,6 +53,45 @@ export const OBSTACLES = [
   box(-23, 4.2, -14, 5, 0.6, 4, 0xe9c46a),
 ];
 
+// Extraction chutes: toys carrying loot score by stepping into one of these circles.
+// Two sit beside the toy spawn; the third is the risky one behind the vault.
+export const EXTRACTION_ZONES = [
+  { x: -35, z: 35, r: 3 },
+  { x: 35, z: 35, r: 3 },
+  { x: 0, z: -35, r: 3 },
+];
+
+/** Index of the extraction zone containing (x, z), or -1. */
+export function extractionZoneAt(x, z) {
+  for (let i = 0; i < EXTRACTION_ZONES.length; i++) {
+    const zone = EXTRACTION_ZONES[i];
+    const dx = x - zone.x, dz = z - zone.z;
+    if (dx * dx + dz * dz <= zone.r * zone.r) return i;
+  }
+  return -1;
+}
+
+/** True if the point (padded by `margin`) is inside any obstacle's footprint. */
+export function isBlocked(x, z, margin = 0) {
+  for (let i = 0; i < OBSTACLES.length; i++) {
+    const o = OBSTACLES[i];
+    if (x > o.minX - margin && x < o.maxX + margin && z > o.minZ - margin && z < o.maxZ + margin) return true;
+  }
+  return false;
+}
+
+/** Height of the highest walkable surface under (x, z) that is at or below `fromY`. */
+export function groundHeightAt(x, z, fromY) {
+  let ground = 0;
+  for (let i = 0; i < OBSTACLES.length; i++) {
+    const o = OBSTACLES[i];
+    if (x >= o.minX && x <= o.maxX && z >= o.minZ && z <= o.maxZ && o.maxY <= fromY + 0.05 && o.maxY > ground) {
+      ground = o.maxY;
+    }
+  }
+  return ground;
+}
+
 // Toys spawn in the south strip, guards in a ring around the vault.
 // Yaw 0 faces -Z (see movement.js).
 export function spawnPoint(role, index) {

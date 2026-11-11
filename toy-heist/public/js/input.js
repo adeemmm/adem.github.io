@@ -13,10 +13,12 @@ export class Input {
     this.zoom = 7;            // desired camera distance
     this.sensitivity = 0.0024;
     this.enabled = false;     // set true once in a room
+    this.interactQueued = false;   // E was pressed since the last sim tick
 
     addEventListener("keydown", (e) => {
       if (!this.locked) return;
       this.keys.add(e.code);
+      if (e.code === "KeyE" && !e.repeat) this.interactQueued = true;
       if (e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault();
     });
     addEventListener("keyup", (e) => this.keys.delete(e.code));
@@ -46,12 +48,15 @@ export class Input {
 
   /** One movement sample for a simulation tick (matches the shared input shape). */
   sample(seq) {
+    const interact = this.interactQueued;
+    this.interactQueued = false;
     return {
       s: seq,
       f: (this.down("KeyW", "ArrowUp") ? 1 : 0) - (this.down("KeyS", "ArrowDown") ? 1 : 0),
       r: (this.down("KeyD", "ArrowRight") ? 1 : 0) - (this.down("KeyA", "ArrowLeft") ? 1 : 0),
       y: this.yaw,
       j: this.down("Space"),
+      e: interact,   // edge-triggered: true for exactly one tick per press
     };
   }
 }

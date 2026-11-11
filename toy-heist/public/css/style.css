@@ -42,3 +42,17 @@ button:disabled { opacity: .5; cursor: default; }
 #crosshair { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%;
   background: rgba(255, 255, 255, .6); }
 [hidden] { display: none !important; }
+
+/* Phase 2: loot HUD */
+#roster li span { float: right; margin-left: 10px; color: #ffd166; }
+#carry { position: absolute; bottom: 96px; left: 50%; transform: translateX(-50%); padding: 8px 16px;
+  border-radius: 12px; background: rgba(255, 209, 102, .92); color: #2b2100; font-size: 14px; font-weight: 700; white-space: nowrap; }
+#prompt { position: absolute; bottom: 54px; left: 50%; transform: translateX(-50%); padding: 7px 14px;
+  border-radius: 10px; background: rgba(20, 22, 43, .85); border: 1px solid rgba(255, 255, 255, .25); font-size: 14px; white-space: nowrap; }
+#prompt kbd { display: inline-block; min-width: 22px; padding: 1px 6px; margin-right: 6px; border-radius: 5px;
+  background: #ffd166; color: #2b2100; font: 700 13px ui-monospace, monospace; text-align: center; }
+#toasts { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column;
+  gap: 6px; align-items: center; }
+.toast { padding: 6px 14px; border-radius: 999px; background: rgba(6, 167, 125, .92); font-size: 14px; font-weight: 600;
+  white-space: nowrap; animation: toast 3s forwards; }
+@keyframes toast { 0% { opacity: 0; transform: translateY(-8px); } 8%, 80% { opacity: 1; transform: none; } 100% { opacity: 0; } }

@@ -1,6 +1,6 @@
 // Static low-poly environment: lights, floor + grid, and the shared obstacle boxes.
 import * as THREE from "three";
-import { OBSTACLES, ARENA_SIZE } from "./shared/map.js";
+import { OBSTACLES, ARENA_SIZE, EXTRACTION_ZONES } from "./shared/map.js";
 
 /** Builds the level into `scene`. Returns the meshes the camera should collide with. */
 export function buildWorld(scene) {
@@ -52,5 +52,37 @@ export function buildWorld(scene) {
     scene.add(mesh);
     solids.push(mesh);
   }
+  for (const zone of EXTRACTION_ZONES) scene.add(createExtractionChute(zone));
   return solids;
+}
+
+// Extraction chute marker: a dark "hole", a bright rim and a tall light beam
+// so toys can find the drop-off from across the arena.
+function createExtractionChute(zone) {
+  const g = new THREE.Group();
+  g.position.set(zone.x, 0, zone.z);
+
+  const hole = new THREE.Mesh(new THREE.CircleGeometry(zone.r, 24), new THREE.MeshBasicMaterial({ color: 0x06281f }));
+  hole.rotation.x = -Math.PI / 2;
+  hole.position.y = 0.02;
+
+  const rim = new THREE.Mesh(
+    new THREE.RingGeometry(zone.r - 0.3, zone.r, 24),
+    new THREE.MeshBasicMaterial({ color: 0x06d6a0, side: THREE.DoubleSide }),
+  );
+  rim.rotation.x = -Math.PI / 2;
+  rim.position.y = 0.04;
+
+  const BEAM_H = 14;
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(zone.r, zone.r, BEAM_H, 24, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0x06d6a0, transparent: true, opacity: 0.12, side: THREE.DoubleSide,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    }),
+  );
+  beam.position.y = BEAM_H / 2;
+
+  g.add(hole, rim, beam);
+  return g;
 }

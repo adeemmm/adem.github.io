@@ -4,7 +4,12 @@
 //   server snapshots ──> Prediction.reconcile (local) + SnapshotBuffer (remotes)
 //   requestAnimationFrame ──> interpolate everything ──> ChaseCamera ──> render
 import * as THREE from "three";
-import { TICK_DT, ROLE_STATS, ROLE_TOY, ROLE_GUARD, PHASE_LOBBY, TICK_MS } from "./shared/constants.js";
+import {
+  TICK_DT, TICK_MS, ROLE_STATS, ROLE_TOY, ROLE_GUARD, PHASE_LOBBY,
+  LOOT_TYPES, INTERACT_RANGE, INTERACT_HEIGHT, carrySpeedFactor,
+} from "./shared/constants.js";
+import { extractionZoneAt } from "./shared/map.js";
+import { LootView } from "./loot.js";
 import { buildWorld } from "./world.js";
 import { createPlayerModel, createNameTag, disposeModel } from "./models.js";
 import { Input } from "./input.js";
@@ -43,6 +48,7 @@ resize();
 const net = new NetClient();
 const clock = new ServerClock();
 const prediction = new Prediction();
+const loot = new LootView(scene);
 
 // Local player
 const local = { role: ROLE_TOY, nid: 0, name: "", model: null, pos: new THREE.Vector3(), yaw: 0 };
@@ -50,6 +56,13 @@ const local = { role: ROLE_TOY, nid: 0, name: "", model: null, pos: new THREE.Ve
 // Remote players: sessionId -> { nid, role, name, model, buffer }
 const remotes = new Map();
 const remotesByNid = new Map();
+
+// Network id -> avatar currently drawn for that player (used to pin carried loot overhead).
+function avatarOf(nid) {
+  if (nid === local.nid) return local.model;
+  const r = remotesByNid.get(nid);
+  return r ? r.model : null;
+}
 
 function buildAvatar(role, nid, name, withTag) {
   const model = createPlayerModel(role, nid);
@@ -101,7 +114,15 @@ net.onState = (state) => {
     remotesByNid.delete(r.nid);
   }
 
+  loot.sync(state.loot);
   updateHud(state);
+};
+
+// One-shot gameplay events.
+net.onEvent = (ev) => {
+  if (ev.k !== "deposit") return;
+  const who = ev.n === local.nid ? "You" : (remotesByNid.get(ev.n) || {}).name || "A toy";
+  toast(`${who} extracted ${LOOT_TYPES[ev.t].label}  +${ev.p}`);
 };
 
 // High-frequency transforms arrive as interest-filtered snapshot messages.
@@ -128,6 +149,7 @@ net.onSnapshot = (snap) => {
 net.onDisconnect = () => {
   for (const r of remotes.values()) destroyAvatar(r.model);
   remotes.clear(); remotesByNid.clear();
+  loot.clear();
   destroyAvatar(local.model); local.model = null;
   prediction.ready = false;
   input.enabled = false;
@@ -178,6 +200,9 @@ function frame(now) {
       r.model.rotation.y = tmp.yaw;
     }
 
+    loot.update(now, avatarOf);
+    updateInteractionHud();
+
     chase.update(local.pos, ROLE_STATS[local.role].height * 0.9, input.yaw, input.pitch, input.zoom, dt);
     ui.hint.hidden = input.locked;
     ui.debug.textContent =
@@ -203,7 +228,7 @@ const ui = {
   menu: $("menu"), hud: $("hud"), error: $("error"), name: $("name"), code: $("code"),
   create: $("create"), join: $("join"), start: $("start"), hint: $("hint"), debug: $("debug"),
   hudCode: $("hud-code"), hudRole: $("hud-role"), hudPhase: $("hud-phase"), hudCount: $("hud-count"),
-  roster: $("roster"),
+  roster: $("roster"), hudScore: $("hud-score"), carry: $("carry"), prompt: $("prompt"), toasts: $("toasts"),
 };
 
 ui.name.value = localStorage.getItem("heist-name") || "";
@@ -236,6 +261,7 @@ ui.start.addEventListener("click", () => net.requestStart());
 function updateHud(state) {
   ui.hudCode.textContent = state.code;
   ui.hudCount.textContent = state.players.size;
+  ui.hudScore.textContent = state.score;
   ui.hudPhase.textContent = state.phase.toUpperCase();
   ui.hudRole.textContent = local.role.toUpperCase();
   ui.hudRole.className = `chip ${local.role}`;
@@ -246,11 +272,50 @@ function updateHud(state) {
   state.players.forEach((p, sessionId) => {
     const li = document.createElement("li");
     li.textContent = p.name + (p.host ? " ★" : "");
+    if (p.score > 0) {
+      const pts = document.createElement("span");
+      pts.textContent = p.score;
+      li.append(pts);
+    }
     if (p.role === ROLE_GUARD) li.classList.add("guard");
     if (sessionId === net.sessionId) li.classList.add("me");
     ui.roster.append(li);
   });
 }
 
+// Carry banner + contextual 'E' prompt for the local player. Runs every frame
+// but only touches the DOM when the text actually changes.
+let carryText = "", promptText = "";
+function updateInteractionHud() {
+  let carry = "", prompt = "";
+  if (local.role === ROLE_TOY) {
+    const b = prediction.body;
+    const held = loot.carriedBy(local.nid);
+    if (held) {
+      const def = LOOT_TYPES[held.type];
+      const slow = Math.round((1 - carrySpeedFactor(def.weight)) * 100);
+      carry = `Carrying ${def.label} · ${def.points} pts · -${slow}% speed`;
+      prompt = extractionZoneAt(b.x, b.z) >= 0 ? "" : "<kbd>E</kbd>Drop · carry it to a green chute to score";
+    } else {
+      const near = loot.nearestFree(b.x, b.y, b.z, INTERACT_RANGE, INTERACT_HEIGHT);
+      if (near) {
+        const def = LOOT_TYPES[near.type];
+        prompt = `<kbd>E</kbd>Grab ${def.label} · ${def.points} pts · weight ${def.weight}`;
+      }
+    }
+  }
+  if (carry !== carryText) { carryText = carry; ui.carry.textContent = carry; ui.carry.hidden = !carry; }
+  if (prompt !== promptText) { promptText = prompt; ui.prompt.innerHTML = prompt; ui.prompt.hidden = !prompt; }
+}
+
+function toast(text) {
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.textContent = text;
+  ui.toasts.append(el);
+  while (ui.toasts.children.length > 4) ui.toasts.firstChild.remove();
+  setTimeout(() => el.remove(), 3000);
+}
+
 // Debug handle for the console / automated tests.
-window.__heist = { net, prediction, remotes, local, input, scene, camera };
+window.__heist = { net, prediction, remotes, local, input, scene, camera, loot };

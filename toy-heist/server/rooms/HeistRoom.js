@@ -1,11 +1,12 @@
 import { Room } from "colyseus";
 import { HeistState, PlayerState } from "./schema/HeistState.js";
 import { SpatialHash } from "../sim/SpatialHash.js";
+import { LootSystem } from "../sim/LootSystem.js";
 import {
   TICK_MS, TICK_DT, MAX_PLAYERS, MAX_GUARDS, TOYS_PER_GUARD,
   ROLE_TOY, ROLE_GUARD, PHASE_LOBBY, PHASE_PLAYING,
-  MSG_INPUT, MSG_SNAPSHOT, MSG_START,
-  AOI_CELL_SIZE, AOI_NEAR_CELLS, FAR_UPDATE_EVERY,
+  MSG_INPUT, MSG_SNAPSHOT, MSG_START, MSG_EVENT,
+  AOI_CELL_SIZE, AOI_NEAR_CELLS, FAR_UPDATE_EVERY, LOOT_TYPES,
 } from "../../public/js/shared/constants.js";
 import { createBody, stepBody, sanitizeInput } from "../../public/js/shared/movement.js";
 import { spawnPoint } from "../../public/js/shared/map.js";
@@ -25,7 +26,7 @@ function generateJoinCode() {
 const MAX_INPUT_QUEUE = 12;   // inputs buffered per player before we drop the oldest
 const MAX_STEP_CREDIT = 6;    // burst allowance (ticks) to absorb network jitter
 const STARVE_TICKS = 10;      // no input for this long -> server idles the body itself
-const IDLE_INPUT = { s: 0, f: 0, r: 0, y: 0, j: false };
+const IDLE_INPUT = { s: 0, f: 0, r: 0, y: 0, j: false, e: false };
 
 const q = (v) => Math.round(v * 100) / 100;   // quantise to 1 cm for the wire
 
@@ -47,6 +48,11 @@ export class HeistRoom extends Room {
     this.sim = new Map();     // sessionId -> server-only simulation record
     this.freeNids = Array.from({ length: MAX_PLAYERS }, (_, i) => MAX_PLAYERS - i); // pop() -> 1,2,3...
     this.grid = new SpatialHash(AOI_CELL_SIZE);
+
+    // Loot is live from the moment the lobby opens so players can practise;
+    // startMatch() reshuffles it and zeroes the scores.
+    this.loot = new LootSystem(this.state);
+    this.loot.spawnAll();
 
     this.onMessage(MSG_INPUT, (client, raw) => {
       const rec = this.sim.get(client.sessionId);
@@ -82,6 +88,7 @@ export class HeistRoom extends Room {
       lastQueuedSeq: -1,
       lastProcessedSeq: -1,
       lastInput: IDLE_INPUT,
+      carrying: null, // LootState this player holds (server-side handle)
       credit: 1,
       starved: 0,
       wire: null,     // quantised [nid, x, y, z, yaw] built once per tick
@@ -95,6 +102,7 @@ export class HeistRoom extends Room {
   onLeave(client) {
     const p = this.state.players.get(client.sessionId);
     if (!p) return;
+    this.loot.drop(this.sim.get(client.sessionId));   // leave carried loot where they stood
     this.freeNids.push(p.nid);
     this.state.players.delete(client.sessionId);
     this.sim.delete(client.sessionId);
@@ -136,7 +144,10 @@ export class HeistRoom extends Room {
     const n = recs.length;
     const guards = n < 2 ? 0 : Math.min(MAX_GUARDS, Math.max(1, Math.round(n / (TOYS_PER_GUARD + 1))));
     let g = 0, t = 0;
+    this.loot.reset(recs);
+    this.state.score = 0;
     recs.forEach((rec, i) => {
+      rec.state.score = 0;
       rec.state.role = i < guards ? ROLE_GUARD : ROLE_TOY;
       this.spawn(rec, rec.state.role === ROLE_GUARD ? g++ : t++);
     });
@@ -147,6 +158,7 @@ export class HeistRoom extends Room {
   spawn(rec, index) {
     const s = spawnPoint(rec.state.role, index);
     rec.body = createBody(s.x, s.y, s.z, s.yaw);
+    rec.body.carry = rec.carrying ? LOOT_TYPES[rec.carrying.type].weight : 0;
     rec.inputs.length = 0;   // inputs predicted from the old position are meaningless now
   }
 
@@ -172,6 +184,7 @@ export class HeistRoom extends Room {
         while (rec.inputs.length > 0 && rec.credit >= 1) {
           const input = rec.inputs.shift();
           stepBody(rec.body, input, rec.state.role, TICK_DT);
+          if (input.e) this.loot.interact(rec);   // grab / drop, in input order
           rec.lastProcessedSeq = input.s;
           rec.lastInput = input;
           rec.credit--;
@@ -179,7 +192,16 @@ export class HeistRoom extends Room {
       }
     }
 
-    // 2. Rebuild the broad phase and each entity's wire record.
+    // 2. Extraction: toys carrying loot into a chute bank it for the team.
+    for (const rec of this.sim.values()) {
+      const deposit = this.loot.tryDeposit(rec);
+      if (!deposit) continue;
+      this.state.score += deposit.points;
+      rec.state.score += deposit.points;
+      this.broadcast(MSG_EVENT, { k: "deposit", n: rec.state.nid, t: deposit.type, p: deposit.points });
+    }
+
+    // 3. Rebuild the broad phase and each entity's wire record.
     this.grid.clear();
     for (const rec of this.sim.values()) {
       const b = rec.body;
@@ -187,7 +209,7 @@ export class HeistRoom extends Room {
       this.grid.insert(rec, b.x, b.z);
     }
 
-    // 3. Per-client interest-filtered snapshots.
+    // 4. Per-client interest-filtered snapshots.
     this.broadcastSnapshots();
   }
 
@@ -213,7 +235,7 @@ export class HeistRoom extends Room {
       viewer.client.send(MSG_SNAPSHOT, {
         t: this.tick,
         a: viewer.lastProcessedSeq,
-        m: [vb.x, vb.y, vb.z, vb.vx, vb.vy, vb.vz, vb.yaw, vb.grounded ? 1 : 0],
+        m: [vb.x, vb.y, vb.z, vb.vx, vb.vy, vb.vz, vb.yaw, vb.grounded ? 1 : 0, vb.carry],
         e: ents,
       });
     }

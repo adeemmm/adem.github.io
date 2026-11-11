@@ -20,11 +20,13 @@ Open two tabs, create a lobby in one and join with the 4-digit code in the other
 | `server/index.js` | Express static hosting + Colyseus server bootstrap |
 | `server/rooms/HeistRoom.js` | Lobby, join codes, role assignment, 30 Hz authoritative loop, snapshots |
 | `server/rooms/schema/HeistState.js` | Low-frequency replicated state (roster, roles, phase) |
+| `server/sim/LootSystem.js` | Loot spawning, grab/drop, extraction deposits |
 | `server/sim/SpatialHash.js` | Grid broad phase used for network interest management |
 | `public/js/shared/` | Code run by **both** server and client: constants, map, movement |
 | `public/js/net/` | `NetClient` (socket), `Prediction` (local player), `Interpolation` (remotes) |
 | `public/js/game.js` | Client entry: scene, entities, fixed-step loop, HUD |
 | `public/js/{world,models,camera,input}.js` | Environment, placeholder meshes, chase camera, controls |
+| `public/js/loot.js` | Loot meshes and the view that mirrors replicated loot state |
 
 ## Netcode
 
@@ -37,7 +39,19 @@ Open two tabs, create a lobby in one and join with the 4-digit code in the other
   everyone else at 10 Hz, staggered across ticks.
 - **Anti-cheat basics.** Inputs are clamped, sequence-checked and rate-limited by a per-player step-credit bucket.
 
-## Not in Phase 1
+## Loot and extraction (Phase 2)
 
-Win conditions, tagging/flashlight detection, loot, SQLite persistence, reconnection, and a rigid-body
+- 24 items are always on the map: Toy Blocks (10 pts, weight 1), Gold Coins (25 pts, weight 2) and
+  Teddy Bears (75 pts, weight 5), rolled by rarity. Tuning lives in `LOOT_TYPES` in `shared/constants.js`.
+- Toys press **E** within 2.2 m to grab one item; **E** again drops it. Guards cannot carry loot.
+- Carrying costs 10% move speed per unit of weight. The weight is part of the predicted body, so
+  client and server agree on the penalty.
+- Walking into a green chute while carrying auto-deposits: the team and player scores go up and the
+  item respawns elsewhere as a newly rolled type.
+- Loot, carriers and scores replicate through the Colyseus state schema. Starting a match re-rolls
+  all loot and zeroes the scores.
+
+## Not yet built
+
+Win conditions, tagging/flashlight detection, SQLite persistence, reconnection, and a rigid-body
 physics engine (movement currently uses a deterministic kinematic controller against AABBs).

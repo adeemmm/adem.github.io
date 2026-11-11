@@ -5,19 +5,21 @@
 // wall-clock time, no state outside the arguments. Given the same starting
 // state and the same input it must produce the same result on both sides.
 
-import { GRAVITY, ROLE_STATS, ROLE_GUARD } from "./constants.js";
+import { GRAVITY, ROLE_STATS, ROLE_GUARD, carrySpeedFactor } from "./constants.js";
 import { OBSTACLES } from "./map.js";
 
 const EPS = 1e-4;
 
 export function createBody(x = 0, y = 0, z = 0, yaw = 0) {
-  return { x, y, z, vx: 0, vy: 0, vz: 0, yaw, grounded: true };
+  // `carry` is the weight of the loot being carried (0 = none). It is part of
+  // the body so prediction and server always agree on the speed penalty.
+  return { x, y, z, vx: 0, vy: 0, vz: 0, yaw, grounded: true, carry: 0 };
 }
 
 export function copyBody(dst, src) {
   dst.x = src.x; dst.y = src.y; dst.z = src.z;
   dst.vx = src.vx; dst.vy = src.vy; dst.vz = src.vz;
-  dst.yaw = src.yaw; dst.grounded = src.grounded;
+  dst.yaw = src.yaw; dst.grounded = src.grounded; dst.carry = src.carry;
   return dst;
 }
 
@@ -32,6 +34,7 @@ export function sanitizeInput(raw) {
     r: Math.max(-1, Math.min(1, r)),
     y,
     j: !!raw.j,
+    e: !!raw.e,   // interact pressed this tick (edge-triggered on the client)
   };
 }
 
@@ -44,6 +47,7 @@ function overlaps(o, minX, maxX, minY, maxY, minZ, maxZ) {
 /**
  * Advance `body` by one fixed step.
  * input: { f: forward -1..1, r: right -1..1, y: camera yaw (rad), j: jump held }
+ * (input.e, the interact flag, is handled by the server's LootSystem, not here.)
  * Camera yaw 0 looks down -Z; positive yaw turns left (standard Three.js Y rotation).
  */
 export function stepBody(body, input, role, dt) {
@@ -54,8 +58,9 @@ export function stepBody(body, input, role, dt) {
   const len = Math.hypot(f, r);
   if (len > 1) { f /= len; r /= len; }
   const sin = Math.sin(input.y), cos = Math.cos(input.y);
-  const wishX = (-sin * f + cos * r) * st.speed;
-  const wishZ = (-cos * f - sin * r) * st.speed;
+  const speed = st.speed * carrySpeedFactor(body.carry);   // heavy loot slows you down
+  const wishX = (-sin * f + cos * r) * speed;
+  const wishZ = (-cos * f - sin * r) * speed;
 
   // Accelerate towards the wish velocity (snappy on ground, floaty in air).
   const maxDelta = (body.grounded ? st.accel : st.airAccel) * dt;
