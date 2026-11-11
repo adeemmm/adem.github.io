@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { ARENA_SIZE, EXTRACTION_ZONES } from "./shared/map.js";
 import { plastic, glow } from "./world.js";
+import { markGlow } from "./postfx.js";
 
 const HALF = ARENA_SIZE / 2;
 const CHUTE_GREEN = 0x19ff9c;
@@ -171,26 +172,52 @@ function createCrayons() {
 
 // ------------------------------------------------------ extraction chutes --
 
-// Chevrons pointing down, scrolled along the tube to show "loot goes in here".
-function chevronTexture() {
-  const texture = canvasTexture(128, (ctx, s) => {
-    ctx.clearRect(0, 0, s, s);
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 12;
-    ctx.lineCap = "round";
-    for (const y of [18, 82]) {
-      ctx.beginPath();
-      ctx.moveTo(24, y);
-      ctx.lineTo(s / 2, y + 30);
-      ctx.lineTo(s - 24, y);
-      ctx.stroke();
+// Neon tube shader, shared by all chutes and driven by a single `time` uniform:
+//   - rim lighting: the tube is brightest where you look along its surface,
+//     so it reads as a glass cylinder with glowing edges;
+//   - chevrons that stream downwards ("loot goes in here");
+//   - a slow brightness pulse travelling down its length.
+const TUBE_MATERIAL = markGlow(new THREE.ShaderMaterial({
+  uniforms: {
+    time: { value: 0 },
+    color: { value: new THREE.Color(CHUTE_GREEN) },
+  },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    varying vec3 vNormal;
+    varying vec3 vView;
+    void main() {
+      vUv = uv;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vNormal = normalize(normalMatrix * normal);
+      vView = normalize(-mv.xyz);
+      gl_Position = projectionMatrix * mv;
     }
-  });
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  return texture;
-}
+  `,
+  fragmentShader: /* glsl */`
+    uniform float time;
+    uniform vec3 color;
+    varying vec2 vUv;
+    varying vec3 vNormal;
+    varying vec3 vView;
+    void main() {
+      // Neon rim: 0 facing the camera, 1 at the silhouette.
+      float rim = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.5);
 
-function createChute(zone, chevrons) {
+      // Downward-streaming chevrons: 8 around the tube, V-shaped via |u - 0.5|.
+      float u = fract(vUv.x * 8.0);
+      float v = fract(vUv.y * 4.0 + time * 0.6 - abs(u - 0.5) * 0.9);
+      float chevron = smoothstep(0.0, 0.06, v) * (1.0 - smoothstep(0.16, 0.24, v));
+
+      float pulse = 0.65 + 0.35 * sin(time * 3.0 + vUv.y * 7.0);   // band of light sinking into the hole
+      float fade = smoothstep(1.0, 0.55, vUv.y);                   // dissolve towards the top
+      gl_FragColor = vec4(color * (rim * 0.75 + chevron * 0.4 + 0.02) * pulse * fade, 1.0);
+    }
+  `,
+  transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+}));
+
+function createChute(zone, rimMat) {
   const g = new THREE.Group();
   g.position.set(zone.x, 0, zone.z);
   const TUBE_H = 16;
@@ -200,7 +227,6 @@ function createChute(zone, chevrons) {
   hole.position.y = 0.02;
 
   // Glowing rim on the floor, plus a hoop high above so the chute reads from afar.
-  const rimMat = glow(CHUTE_GREEN, 2.2);
   const rim = new THREE.Mesh(new THREE.TorusGeometry(zone.r, 0.14, 8, 40), rimMat);
   rim.rotation.x = Math.PI / 2;
   rim.position.y = 0.12;
@@ -208,20 +234,13 @@ function createChute(zone, chevrons) {
   hoop.rotation.x = Math.PI / 2;
   hoop.position.y = TUBE_H;
 
-  // Translucent tube with chevrons streaming downwards.
-  const map = chevrons.clone();
-  map.repeat.set(8, 4);
-  const tubeMat = new THREE.MeshBasicMaterial({
-    map, color: new THREE.Color(CHUTE_GREEN).multiplyScalar(1.6), transparent: true, opacity: 0.5,
-    side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
-  });
-  const tube = new THREE.Mesh(new THREE.CylinderGeometry(zone.r, zone.r, TUBE_H, 32, 1, true), tubeMat);
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(zone.r, zone.r, TUBE_H, 32, 1, true), TUBE_MATERIAL);
   tube.position.y = TUBE_H / 2;
 
   // Rings that sink into the hole in a loop.
   const rings = [];
   for (let i = 0; i < 3; i++) {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(zone.r * 0.8, 0.07, 6, 32), glow(CHUTE_GREEN, 2.2, { transparent: true }));
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(zone.r * 0.8, 0.07, 6, 32), glow(CHUTE_GREEN, 1.4, { transparent: true }));
     ring.rotation.x = Math.PI / 2;
     g.add(ring);
     rings.push(ring);
@@ -232,7 +251,7 @@ function createChute(zone, chevrons) {
   light.position.y = 2.5;
 
   g.add(hole, rim, hoop, tube, light);
-  return { group: g, map, rings, light, height: TUBE_H };
+  return { group: g, rings, light, height: TUBE_H };
 }
 
 // ----------------------------------------------------------------- public --
@@ -241,16 +260,18 @@ function createChute(zone, chevrons) {
 export function buildProps(scene) {
   scene.add(createRoom(), createBlockTowers(), createRingStacker(), createBall(), createCrayons());
 
-  const chevrons = chevronTexture();
-  const chutes = EXTRACTION_ZONES.map((zone) => createChute(zone, chevrons));
+  const rimMat = glow(CHUTE_GREEN, 1.6);   // shared by every rim and hoop, pulsed below
+  const rimBase = rimMat.color.clone();
+  const chutes = EXTRACTION_ZONES.map((zone) => createChute(zone, rimMat));
   for (const chute of chutes) scene.add(chute.group);
 
   return {
     /** time in milliseconds. */
     update(time) {
       const t = time * 0.001;
+      TUBE_MATERIAL.uniforms.time.value = t;                    // drives rim pulse + chevron flow in the shader
+      rimMat.color.copy(rimBase).multiplyScalar(0.8 + 0.3 * Math.sin(t * 3));   // neon rims breathe in step
       chutes.forEach((chute, n) => {
-        chute.map.offset.y = t * 0.6;                           // chevrons flow down
         chute.light.intensity = 50 + Math.sin(t * 3 + n) * 14;
         chute.rings.forEach((ring, i) => {
           const k = (t * 0.35 + i / chute.rings.length + n * 0.2) % 1;   // 0 = top, 1 = floor

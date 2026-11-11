@@ -6,7 +6,10 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { OBSTACLES, ARENA_SIZE } from "./shared/map.js";
 
-export const NIGHT_SKY = 0x151a3d;
+import { markGlow } from "./postfx.js";
+
+export const NIGHT_SKY = 0x0c1036;        // deep midnight indigo: background and fog share it
+const FOG_DENSITY = 0.0085;               // ~11% at the far arena wall, ~30% at the giant props, opaque by the room walls
 
 /** Glossy toy plastic: saturated colour, low roughness, a hint of sheen from the environment map. */
 export function plastic(color, extra = {}) {
@@ -14,13 +17,13 @@ export function plastic(color, extra = {}) {
 }
 
 /**
- * An unlit material brighter than white, so the bloom pass picks it up as a
- * light source. (`intensity` multiplies the colour beyond 1.0 in linear space.)
+ * An unlit, emissive-looking material tagged as a light source for the selective
+ * bloom pass. (`intensity` multiplies the colour beyond 1.0 in linear space.)
  */
 export function glow(color, intensity = 2.5, extra = {}) {
   const material = new THREE.MeshBasicMaterial({ ...extra });
   material.color.set(color).multiplyScalar(intensity);
-  return material;
+  return markGlow(material);   // feeds the selective bloom pass
 }
 
 /**
@@ -30,7 +33,9 @@ export function glow(color, intensity = 2.5, extra = {}) {
  */
 export function buildWorld(scene, renderer) {
   scene.background = new THREE.Color(NIGHT_SKY);
-  scene.fog = new THREE.Fog(NIGHT_SKY, 90, 260);
+  // Exponential fog: the arena stays crisp while the giant props outside it
+  // sink into the dark, framing the play space like a spotlit stage.
+  scene.fog = new THREE.FogExp2(NIGHT_SKY, FOG_DENSITY);
 
   // --- Lighting: a moonlit playroom after bedtime -------------------------
   // Soft image-based fill so plastic and metal have something to reflect.

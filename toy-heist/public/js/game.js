@@ -25,6 +25,7 @@ import { buildWorld } from "./world.js";
 import { buildProps } from "./props.js";
 import { PostFX } from "./postfx.js";
 import { AvatarJuice, Particles } from "./juice.js";
+import { ContactShadows } from "./contactShadows.js";
 import { createPlayerModel, createNameTag, disposeModel } from "./models.js";
 import { Input } from "./input.js";
 import { ChaseCamera } from "./camera.js";
@@ -51,6 +52,7 @@ const { solids, lights } = buildWorld(scene, renderer);
 const props = buildProps(scene);                          // playroom megastructures + chute effects
 const postfx = new PostFX(renderer, scene, camera);       // bloom + colour grade (adaptive)
 const particles = new Particles(scene);
+const contactShadows = new ContactShadows(scene);
 const avatarJuice = new AvatarJuice({
   // Any player touching down kicks up a dust puff sized by how hard they landed.
   onLand: (model, impact) => particles.burst(model.position, {
@@ -373,6 +375,19 @@ function frame(now) {
     }
     particles.update(dt);
     props.update(now);
+
+    // Ground blobs under every drawn player and every item lying on the floor.
+    contactShadows.begin();
+    if (local.model) contactShadows.add(local.pos.x, local.pos.y, local.pos.z, ROLE_STATS[local.role].radius * 1.5);
+    for (const r of remotes.values()) {
+      if (!r.model || !r.model.visible) continue;
+      const p = r.model.position;
+      contactShadows.add(p.x, p.y, p.z, ROLE_STATS[r.role].radius * 1.5);
+    }
+    for (const item of loot.items.values()) {
+      if (item.carrier === 0) contactShadows.add(item.x, item.y, item.z, 0.6, 0.4);
+    }
+    contactShadows.end();
 
     // Detection beeps: a toy hears a warning while lit; a guard hears each new catch.
     if (local.role === ROLE_TOY && spotted && now >= spottedBeepAt && match.phase !== PHASE_ENDED) {

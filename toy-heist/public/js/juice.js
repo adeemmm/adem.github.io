@@ -1,6 +1,7 @@
 // Game feel helpers. Purely cosmetic: they read where things are being drawn
 // and add motion on top; nothing here feeds back into prediction or networking.
 import * as THREE from "three";
+import { markGlow } from "./postfx.js";
 
 // ------------------------------------------------------------ avatar juice --
 
@@ -85,10 +86,10 @@ export class Particles {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(this.positions, 3));
     geometry.setAttribute("color", new THREE.BufferAttribute(this.colors, 3));
-    this.points = new THREE.Points(geometry, new THREE.PointsMaterial({
+    this.points = new THREE.Points(geometry, markGlow(new THREE.PointsMaterial({
       size: 0.22, vertexColors: true, transparent: true, depthWrite: false,
       blending: THREE.AdditiveBlending, sizeAttenuation: true,
-    }));
+    })));
     this.points.frustumCulled = false;   // positions change every frame
     scene.add(this.points);
     this.color = new THREE.Color();

@@ -4,6 +4,7 @@
 import * as THREE from "three";
 import { JAIL, JAIL_LEVER } from "./shared/map.js";
 import { LEVER_RANGE } from "./shared/constants.js";
+import { markGlow } from "./postfx.js";
 
 const FENCE_HEIGHT = 2.6;
 const LEVER_REST = -0.75, LEVER_PULLED = 0.75;   // handle tilt (radians) at 0% / 100%
@@ -57,9 +58,10 @@ export class JailView {
     }
 
     // Laser rails between the posts (one shared material so they pulse together).
-    this.laserMat = new THREE.MeshBasicMaterial({
+    this.laserMat = markGlow(new THREE.MeshBasicMaterial({
       color: 0xff3b3b, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending,
-    });
+    }));
+    this.laserMat.color.multiplyScalar(2);   // hot enough to read as a laser once bloomed
     const railX = new THREE.BoxGeometry(JAIL.w, 0.07, 0.07);
     const railZ = new THREE.BoxGeometry(0.07, 0.07, JAIL.d);
     for (let i = 1; i <= 4; i++) {

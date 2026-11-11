@@ -4,6 +4,7 @@
 import * as THREE from "three";
 import { ROLE_STATS, ROLE_GUARD, ROLE_TOY, VISION_RANGE, VISION_HALF_ANGLE } from "./shared/constants.js";
 import { DEFAULT_TOY_SKIN, DEFAULT_GUARD_SKIN } from "./shared/cosmetics.js";
+import { markGlow } from "./postfx.js";
 
 // Saturated toy-box colours; faceted low-poly shading with a glossy plastic finish.
 const TOY_COLORS = [0xff3b5c, 0xffc531, 0x16db93, 0x18d6ff, 0xff7a2f, 0xd13bff, 0x8ee53f, 0xff5fb7];
@@ -43,7 +44,8 @@ const BEAM_MATERIAL = new THREE.ShaderMaterial({
   transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
 });
 BEAM_MATERIAL.uniforms.beamLength = { value: VISION_RANGE };
-BEAM_MATERIAL.userData.shared = true;   // never disposed with an individual model
+BEAM_MATERIAL.userData.shared = true;
+markGlow(BEAM_MATERIAL);   // never disposed with an individual model
 
 function shadowed(mesh) { mesh.castShadow = true; return mesh; }
 
@@ -205,7 +207,7 @@ export function createGuardModel(skin = DEFAULT_GUARD_SKIN) {
   const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.45, 6), flat(0x333333));
   barrel.rotation.x = Math.PI / 2;
   // A hot lens disc: bright enough to bloom, so you can spot a guard's torch across the room.
-  const lens = new THREE.Mesh(new THREE.CircleGeometry(0.1, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xfff0a8).multiplyScalar(4) }));
+  const lens = new THREE.Mesh(new THREE.CircleGeometry(0.1, 10), markGlow(new THREE.MeshBasicMaterial({ color: new THREE.Color(0xfff0a8).multiplyScalar(4) })));
   lens.position.z = -0.24;
   lens.rotation.y = Math.PI;
   torch.add(barrel, lens);

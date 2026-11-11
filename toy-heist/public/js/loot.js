@@ -4,6 +4,7 @@
 //   - Carried items float above their carrier's head as the "holding" indicator.
 import * as THREE from "three";
 import { ROLE_STATS, ROLE_TOY } from "./shared/constants.js";
+import { markGlow } from "./postfx.js";
 
 const flat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.05, flatShading: true, ...extra });
 const BLOCK_COLORS = [0xff3b5c, 0x16db93, 0x18d6ff, 0xff7a2f, 0xa259ff];
@@ -14,7 +15,7 @@ const HALO_GEOMETRY = new THREE.RingGeometry(0.55, 0.72, 28).rotateX(-Math.PI / 
 const haloMaterial = (color) => {
   const m = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending });
   m.color.set(color).multiplyScalar(1.8);
-  return m;
+  return markGlow(m);
 };
 const HALO_MATERIALS = { block: haloMaterial(0x7fd4ff), coin: haloMaterial(0xffc531), teddy: haloMaterial(0xff5fb7) };
 const POP_SECONDS = 0.35;   // spawn / drop "pop-in" duration

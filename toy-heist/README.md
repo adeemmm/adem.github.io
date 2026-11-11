@@ -35,7 +35,8 @@ Open two tabs (use **Play as Guest** for quick tests), create a lobby in one and
 | `public/js/game.js` | Client entry: scene, entities, fixed-step loop, HUD |
 | `public/js/{world,models,camera,input}.js` | Arena and lighting, character meshes, chase camera, controls |
 | `public/js/props.js` | Decorative playroom megastructures and extraction chute effects |
-| `public/js/postfx.js` | Bloom, colour grade and adaptive quality |
+| `public/js/postfx.js` | Selective bloom, colour grade and adaptive quality |
+| `public/js/contactShadows.js` | Instanced ground blobs under players and loot |
 | `public/js/juice.js` | Squash-and-stretch, lean, and the particle system |
 | `public/js/loot.js` | Loot meshes and the view that mirrors replicated loot state |
 | `public/js/jail.js` | Jail cell, lever and guard target-marker rendering |
@@ -144,8 +145,17 @@ Timings can be overridden with `HEIST_CHAOS_CALM_SECONDS`, `HEIST_CHAOS_VOTE_SEC
   toward its edges and along its length; only your own flashlight casts shadows.
 - **Materials.** Saturated toy-box palette on glossy plastic `MeshStandardMaterial`s. Arena blocks are
   rounded and studded like building bricks; the floor is a checkered playmat.
-- **Post-processing.** Bloom plus a light colour grade and vignette. It switches itself off if the
-  frame rate stays under 40 fps for four seconds; **P** toggles it by hand.
+- **Atmosphere.** Midnight-indigo exponential fog (`FogExp2`) keeps the arena crisp and lets the giant
+  props outside it sink into the dark.
+- **Post-processing.** Selective bloom plus a light colour grade and vignette. Only materials tagged
+  with `markGlow()` (chutes, flashlight beams and lenses, jail lasers, loot halos, sparkles) feed the
+  bloom: the scene is drawn a second time at half resolution with everything else blacked out, so lit
+  toy blocks never bloom. All of it, the extra pass included, switches itself off if the frame rate
+  stays under 40 fps for four seconds; **P** toggles it by hand.
+- **Contact shadows.** A soft blob under every player and floor item, placed on whatever surface is
+  beneath them, widening and fading with height. One instanced draw call, no textures.
+- **Chute shader.** The extraction tubes use one shared shader with neon rim lighting, streaming
+  chevrons and a travelling pulse, driven by a single time uniform.
 - **Juice.** Loot bobs, wobbles and pops in over a pulsing halo. Players squash on landing, stretch in
   the air and lean into a run. The camera dips and shakes on landing, tilts into strafes and widens
   at boost speeds. Dust puffs and sparkles mark landings, pickups, deposits and arrests.
